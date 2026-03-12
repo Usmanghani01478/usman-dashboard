@@ -67,7 +67,7 @@ export default function App() {
 setProjects(dbLoad("uc3_proj", []));
 setClients(dbLoad("uc3_clients", ["Jon Mac","Shrey","Tyler","Danny Rio"]));
   }, []);
-
+dbLoad("uc3_earn2",{}).then
   const saveProjects = (d) => { setProjects(d); dbSave("uc3_proj", d); };
   const saveClients = (d) => { setClients(d); dbSave("uc3_clients", d); };
 
@@ -540,13 +540,14 @@ function Earnings({ clients, projects }) {
   const [showForm,setShowForm]=useState(false);
 
   useEffect(()=>{
-    fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).then(d=>{
-      if(d?.rates?.PKR){setPkr(d.rates.PKR);setRs(`Live · 1 USD = ${d.rates.PKR.toFixed(2)} PKR`);setLiveOk(true);}
-      else setRs("~278 PKR (offline)");
-    }).catch(()=>setRs("~278 PKR (offline)"));
-    dbLoad("uc3_earn2",{}).then(d=>{if(d&&Object.keys(d).length)setAllData(d);});
-  },[]);
+  fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).then(d=>{
+    if(d?.rates?.PKR){setPkr(d.rates.PKR);setRs(`Live · 1 USD = ${d.rates.PKR.toFixed(2)} PKR`);setLiveOk(true);}
+    else setRs("~278 PKR (offline)");
+  }).catch(()=>setRs("~278 PKR (offline)"));
 
+  const d = dbLoad("uc3_earn2", {});
+  if (d && Object.keys(d).length) setAllData(d);
+},[]);
   const KEY=`${year}_${month}`;
   const manualEntries=allData[KEY]||[];
 
