@@ -562,6 +562,7 @@ function Dashboard({ projects, syncStatus, onSync }) {
 
   const [now, setNow] = useState(new Date());
   const [showAllClocks, setShowAllClocks] = useState(false);
+  const [showEarnings, setShowEarnings]   = useState(false);
   const [popup, setPopup]   = useState(null); // which platform popup is open
   const [socialKey, setSocialKey] = useState(todayKey());
 
@@ -725,12 +726,15 @@ function Dashboard({ projects, syncStatus, onSync }) {
       <div className="g2" style={{ marginBottom:16 }}>
         <div className="card" style={{ background:"#111", color:"#fff" }}>
           <div style={{ fontSize:10, letterSpacing:2, color:"#444", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>This Month · {MO[cm]}</div>
-          <div style={{ fontSize:46, fontWeight:800, lineHeight:1, color:monthEarn>0?"#fff":"#2a2a2a" }}>${monthEarn.toFixed(0)}</div>
+          <div onClick={() => setShowEarnings(v=>!v)} style={{ fontSize:46, fontWeight:800, lineHeight:1, color:monthEarn>0?"#fff":"#2a2a2a", cursor:"pointer", userSelect:"none", filter: showEarnings?"none":"blur(10px)", transition:"filter .2s" }}>${monthEarn.toFixed(0)}</div>
           <div style={{ fontSize:12, color:"#444", marginTop:7 }}>{doneProjsThisMonth.length} video{doneProjsThisMonth.length!==1?"s":""} completed</div>
+          <div onClick={() => setShowEarnings(v=>!v)} style={{ fontSize:10, color:"#555", marginTop:6, cursor:"pointer", userSelect:"none" }}>
+            {showEarnings ? "👁 tap to hide" : "👁 tap to reveal"}
+          </div>
         </div>
         <div className="card" style={{ borderTop:"3px solid #111" }}>
           <div style={{ fontSize:10, letterSpacing:2, color:"#a1a1aa", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>All Time Earnings</div>
-          <div style={{ fontSize:46, fontWeight:800, lineHeight:1 }}>${totalEarn.toFixed(0)}</div>
+          <div onClick={() => setShowEarnings(v=>!v)} style={{ fontSize:46, fontWeight:800, lineHeight:1, cursor:"pointer", userSelect:"none", filter: showEarnings?"none":"blur(10px)", transition:"filter .2s" }}>${totalEarn.toFixed(0)}</div>
           <div style={{ fontSize:12, color:"#a1a1aa", marginTop:7 }}>from {projects.filter(p=>p.status==="Done"||p.status==="Delivered").length} completed</div>
         </div>
       </div>
