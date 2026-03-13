@@ -845,6 +845,22 @@ function Dashboard({ projects, syncStatus, onSync }) {
         </button>
       </div>
 
+      {/* Cloud Sync */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+        gap:12, background:"#fff", borderRadius:14, padding:"12px 16px",
+        border:"1.5px solid #e4e4e4", marginBottom:16, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ fontWeight:800, fontSize:13 }}>☁ Cloud Sync</div>
+          <div style={{ fontSize:11, color:"#a1a1aa", marginTop:1 }}>
+            {syncStatus==="ok"      && "Synced across all devices ✓"}
+            {syncStatus==="syncing" && "Syncing..."}
+            {syncStatus==="err"     && "Error — tap to retry"}
+            {syncStatus==="idle"    && "Tap to sync between devices"}
+          </div>
+        </div>
+        <SyncSetupInline syncStatus={syncStatus} onSync={onSync} />
+      </div>
+
       {/* Stats */}
       <div className="g3" style={{ marginBottom:16 }}>
         {[
@@ -994,20 +1010,6 @@ function Dashboard({ projects, syncStatus, onSync }) {
             );
           })
         }
-      </div>
-
-      {/* Cloud Sync Card — visible on all devices */}
-      <div className="card" style={{ marginTop:16, display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-        <div style={{ flex:1, minWidth:160 }}>
-          <div style={{ fontWeight:800, fontSize:13, marginBottom:2 }}>☁ Cloud Sync</div>
-          <div style={{ fontSize:11, color:"#a1a1aa" }}>
-            {syncStatus==="ok"     && "Synced across all devices ✓"}
-            {syncStatus==="syncing"&& "Syncing..."}
-            {syncStatus==="err"    && "Sync error — tap to retry"}
-            {syncStatus==="idle"   && "Tap to sync with other devices"}
-          </div>
-        </div>
-        <SyncSetupInline syncStatus={syncStatus} onSync={onSync} />
       </div>
 
       {/* Bottom Popup for social items */}
