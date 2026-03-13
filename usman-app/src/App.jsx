@@ -8,10 +8,9 @@ const STYLES = `
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  html, body { height: 100%; background: #f4f4f5; }
-  #root      { height: 100%; }
-
-  body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  html { width: 100%; height: 100%; background: #f4f4f5; }
+  body { width: 100%; height: 100%; background: #f4f4f5; font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  #root { width: 100%; height: 100%; }
 
   input, textarea, select, button { font-family: inherit; }
 
@@ -31,6 +30,7 @@ const STYLES = `
   /* ── Shell ── */
   .shell {
     display: flex;
+    width: 100%;
     height: 100vh;
     overflow: hidden;
   }
@@ -171,30 +171,30 @@ const STYLES = `
     white-space: nowrap;
   }
 
-  /* ── Bottom nav (mobile only) ── */
-  .bottom-nav { display: none; }
+  /* ── Bottom nav — hidden on desktop ── */
+  .bottom-nav { display: none !important; }
 
-  /* ── TABLET ── */
-  @media (max-width: 900px) and (min-width: 601px) {
-    .sidebar { width: 60px; min-width: 60px; }
-    .sidebar .brand-text, .sidebar .nav-label, .sidebar .specs { display: none; }
+  /* ── TABLET (769px – 1100px) ── */
+  @media (max-width: 1100px) and (min-width: 769px) {
+    .sidebar { width: 64px !important; min-width: 64px !important; }
+    .sidebar .brand-text, .sidebar .nav-label, .sidebar .specs { display: none !important; }
     .nav-btn { justify-content: center; padding: 14px 0; }
-    .page-wrap { padding: 24px 20px 80px; }
+    .page-wrap { padding: 24px 20px 60px; }
   }
 
-  /* ── MOBILE ── */
-  @media (max-width: 600px) {
-    .sidebar { display: none; }
-    .main-area { height: calc(100vh - 60px); }
+  /* ── MOBILE (≤768px) ── */
+  @media (max-width: 768px) {
+    .sidebar { display: none !important; }
+    .main-area { height: calc(100vh - 60px) !important; }
     .page-wrap { padding: 16px 14px 24px; }
     .bottom-nav {
-      display: flex;
+      display: flex !important;
       position: fixed;
       bottom: 0; left: 0; right: 0;
       height: 60px;
       background: #111;
       border-top: 1px solid #1e1e1e;
-      z-index: 999;
+      z-index: 9999;
     }
     .bn-btn {
       flex: 1;
@@ -265,6 +265,150 @@ function calcProjectEarning(p) {
   return parseFloat(p.money) || 0;
 }
 
+// ── Consistency point system ──
+// Social: 1pt each (max 4) | YouTube short: 5pt (all 5 done) | Namaz: 1pt (all 5)
+// Total max = 10 points/day
+function calcTodayPoints(dateKey) {
+  let pts = { social: 0, yt: 0, namaz: 0 };
+  try {
+    const s = JSON.parse(localStorage.getItem("uc_social") || "{}");
+    if (s.date === dateKey) pts.social = Object.values(s.data || {}).filter(Boolean).length;
+  } catch {}
+  try {
+    const y = JSON.parse(localStorage.getItem("uc_yt_auto") || "{}");
+    if (y.date === dateKey) pts.yt = Object.values(y.data || {}).every(Boolean) ? 5 : 0;
+  } catch {}
+  try {
+    const mu = JSON.parse(localStorage.getItem("uc_muslim") || "{}");
+    if (mu.date === dateKey) {
+      const ids = ["fajr","dhuhr","asr","maghrib","isha"];
+      pts.namaz = ids.every(id => mu.prayers?.[id]) ? 1 : 0;
+    }
+  } catch {}
+  return pts;
+}
+
+function saveConsDay(dateKey, pts) {
+  try {
+    const total = pts.social + pts.yt + pts.namaz;
+    const cons = JSON.parse(localStorage.getItem("uc_cons") || "{}");
+    if (total > 0) cons[dateKey] = { social: pts.social, yt: pts.yt, namaz: pts.namaz, total };
+    else delete cons[dateKey];
+    localStorage.setItem("uc_cons", JSON.stringify(cons));
+  } catch {}
+}
+
+function refreshConsToday() {
+  const dk = new Date().toISOString().slice(0,10);
+  saveConsDay(dk, calcTodayPoints(dk));
+}
+
+/* ─────────────────────────────────────────────────
+   SYNC PANEL  (sidebar bottom)
+───────────────────────────────────────────────── */
+function SyncPanel({ setProjects, setClients }) {
+  const [mode, setMode]       = useState(null); // null | "copy" | "paste"
+  const [syncCode, setSyncCode] = useState("");
+  const [pasteVal, setPasteVal] = useState("");
+  const [msg, setMsg]         = useState("");
+
+  const genCode = () => {
+    try {
+      const data = {
+        p: JSON.parse(localStorage.getItem("uc_proj")    || "[]"),
+        c: JSON.parse(localStorage.getItem("uc_clients") || "[]"),
+        e: JSON.parse(localStorage.getItem("uc_earn")    || "{}"),
+        t: Date.now(),
+      };
+      const code = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+      setSyncCode(code);
+      navigator.clipboard.writeText(code).catch(()=>{});
+      setMsg("✅ Code copied! Paste on other device.");
+    } catch { setMsg("❌ Error generating code"); }
+  };
+
+  const applyCode = () => {
+    try {
+      const data = JSON.parse(decodeURIComponent(escape(atob(pasteVal.trim()))));
+      if (data.p) { localStorage.setItem("uc_proj",    JSON.stringify(data.p)); setProjects(data.p); }
+      if (data.c) { localStorage.setItem("uc_clients", JSON.stringify(data.c)); setClients(data.c); }
+      if (data.e) { localStorage.setItem("uc_earn",    JSON.stringify(data.e)); }
+      setMsg("✅ Synced! All data updated.");
+      setPasteVal(""); setMode(null);
+    } catch { setMsg("❌ Invalid code. Try again."); }
+  };
+
+  const btnStyle = { width:"100%", padding:"7px 10px", background:"#1a1a1a", color:"#555",
+    border:"1px solid #222", borderRadius:7, fontSize:10, fontWeight:700, cursor:"pointer",
+    marginBottom:5, textAlign:"center" };
+
+  return (
+    <div className="specs" style={{ padding:"12px 14px 16px", borderTop:"1px solid #1a1a1a" }}>
+      <div style={{ fontSize:9, color:"#2a2a2a", lineHeight:1.8, marginBottom:10 }}>
+        i5 9th · GTX 1660S · 32GB DDR3
+      </div>
+
+      {/* Sync Buttons */}
+      {!mode && <>
+        <button style={btnStyle} onClick={() => { setMode("copy"); genCode(); }}>
+          📤 COPY SYNC CODE
+        </button>
+        <button style={btnStyle} onClick={() => { setMode("paste"); setMsg(""); }}>
+          📥 PASTE SYNC CODE
+        </button>
+      </>}
+
+      {/* Copy Mode */}
+      {mode === "copy" && (
+        <div>
+          <div style={{ fontSize:9, color:"#555", marginBottom:6 }}>Copy this code → paste on other device:</div>
+          <textarea
+            readOnly
+            value={syncCode}
+            style={{ width:"100%", height:52, background:"#0a0a0a", color:"#10b981",
+              border:"1px solid #222", borderRadius:6, fontSize:8, padding:"6px",
+              resize:"none", fontFamily:"monospace", wordBreak:"break-all" }}
+            onClick={e => { e.target.select(); navigator.clipboard.writeText(syncCode).catch(()=>{}); }}
+          />
+          <button style={btnStyle} onClick={() => { navigator.clipboard.writeText(syncCode).catch(()=>{}); setMsg("✅ Copied!"); }}>
+            📋 COPY AGAIN
+          </button>
+          <button style={{ ...btnStyle, marginBottom:0, color:"#333" }} onClick={() => { setMode(null); setMsg(""); setSyncCode(""); }}>
+            ✕ Close
+          </button>
+        </div>
+      )}
+
+      {/* Paste Mode */}
+      {mode === "paste" && (
+        <div>
+          <div style={{ fontSize:9, color:"#555", marginBottom:6 }}>Paste sync code from other device:</div>
+          <textarea
+            value={pasteVal}
+            onChange={e => setPasteVal(e.target.value)}
+            placeholder="Paste code here..."
+            style={{ width:"100%", height:52, background:"#0a0a0a", color:"#a3e635",
+              border:"1px solid #333", borderRadius:6, fontSize:8, padding:"6px",
+              resize:"none", fontFamily:"monospace", wordBreak:"break-all" }}
+          />
+          <button style={{ ...btnStyle, color: pasteVal ? "#a3e635" : "#555" }}
+            onClick={applyCode} disabled={!pasteVal.trim()}>
+            ✅ APPLY SYNC
+          </button>
+          <button style={{ ...btnStyle, marginBottom:0, color:"#333" }} onClick={() => { setMode(null); setMsg(""); setPasteVal(""); }}>
+            ✕ Cancel
+          </button>
+        </div>
+      )}
+
+      {msg && (
+        <div style={{ fontSize:9, color: msg.startsWith("✅") ? "#10b981" : "#ef4444",
+          marginTop:6, fontWeight:700, wordBreak:"break-word" }}>{msg}</div>
+      )}
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────────
    APP
 ───────────────────────────────────────────────── */
@@ -277,23 +421,27 @@ export default function App() {
   const saveClients  = d => { setClients(d);  save("uc_clients", d); };
 
   const NAV = [
-    { id:"dashboard", icon:"⬡", label:"Dashboard"  },
-    { id:"projects",  icon:"◧", label:"Projects"    },
-    { id:"earnings",  icon:"◎", label:"Earnings"    },
-    { id:"outreach",  icon:"✉", label:"Outreach"    },
-    { id:"messages",  icon:"◻", label:"Messages"    },
-    { id:"converter", icon:"⊛", label:"USD / PKR"   },
+    { id:"dashboard",    icon:"⬡", label:"Dashboard"   },
+    { id:"projects",     icon:"◧", label:"Projects"     },
+    { id:"earnings",     icon:"◎", label:"Earnings"     },
+    { id:"consistency",  icon:"◈", label:"Consistency" },
+    { id:"outreach",     icon:"✉", label:"Outreach"     },
+    { id:"messages",     icon:"◻", label:"Messages"     },
+    { id:"converter",    icon:"⊛", label:"USD / PKR"    },
+    { id:"muslim",        icon:"☽", label:"Muslim Daily"  },
   ];
 
   const urgentCount = projects.filter(p => p.priority === "Urgent" && p.status !== "Delivered").length;
 
   const PAGES = {
-    dashboard: <Dashboard projects={projects} />,
-    projects:  <Projects  projects={projects} saveProjects={saveProjects} clients={clients} saveClients={saveClients} />,
-    earnings:  <Earnings  projects={projects} clients={clients} />,
-    outreach:  <Outreach  clients={clients} />,
-    messages:  <Messages />,
-    converter: <Converter />,
+    dashboard:   <Dashboard projects={projects} />,
+    projects:    <Projects  projects={projects} saveProjects={saveProjects} clients={clients} saveClients={saveClients} />,
+    earnings:    <Earnings  projects={projects} clients={clients} />,
+    consistency: <Consistency />,
+    outreach:    <Outreach  clients={clients} />,
+    messages:    <Messages />,
+    converter:   <Converter />,
+    muslim:      <MuslimDaily />,
   };
 
   return (
@@ -330,11 +478,7 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="specs" style={{ padding:"12px 18px 16px", borderTop:"1px solid #1a1a1a" }}>
-            <div style={{ fontSize:9, color:"#2a2a2a", lineHeight:1.9 }}>
-              i5 9th · GTX 1660S · 32GB DDR3<br/>~2 days/video · 10h/day
-            </div>
-          </div>
+          <SyncPanel setProjects={setProjects} setClients={setClients} />
         </aside>
 
         {/* ── Main ── */}
@@ -374,62 +518,142 @@ export default function App() {
    DASHBOARD
 ───────────────────────────────────────────────── */
 function Dashboard({ projects }) {
-  const [social, setSocial] = useState({
-    "𝕏 Twitter":false, "Instagram":false, "YouTube":false, "LinkedIn":false, "Pinterest":false
-  });
+  const todayKey = () => new Date().toISOString().slice(0,10);
+
   const [now, setNow] = useState(new Date());
+  const [showAllClocks, setShowAllClocks] = useState(false);
+  const [popup, setPopup]   = useState(null); // which platform popup is open
+  const [socialKey, setSocialKey] = useState(todayKey());
+
+  // Load social from localStorage, reset if new day
+  const loadSocial = () => {
+    try {
+      const raw = localStorage.getItem("uc_social");
+      if (!raw) return { date: todayKey(), data: { "𝕏 Twitter":false,"Instagram":false,"YouTube":false,"LinkedIn":false } };
+      const parsed = JSON.parse(raw);
+      if (parsed.date !== todayKey()) return { date: todayKey(), data: { "𝕏 Twitter":false,"Instagram":false,"YouTube":false,"LinkedIn":false } };
+      return parsed;
+    } catch { return { date: todayKey(), data: { "𝕏 Twitter":false,"Instagram":false,"YouTube":false,"LinkedIn":false } }; }
+  };
+  const [socialState, setSocialState] = useState(() => loadSocial());
+  const social = socialState.data;
+
+  // YouTube automation checklist - also daily reset
+  const loadYT = () => {
+    try {
+      const raw = localStorage.getItem("uc_yt_auto");
+      const steps = ["🔍 Find Viral Video","⬇️ Download Video","📝 Take the Script","✂️ Edit the Video","📤 Post the Short"];
+      if (!raw) return { date: todayKey(), data: Object.fromEntries(steps.map(s=>[s,false])) };
+      const parsed = JSON.parse(raw);
+      if (parsed.date !== todayKey()) return { date: todayKey(), data: Object.fromEntries(steps.map(s=>[s,false])) };
+      return parsed;
+    } catch {
+      const steps = ["🔍 Find Viral Video","⬇️ Download Video","📝 Take the Script","✂️ Edit the Video","📤 Post the Short"];
+      return { date: todayKey(), data: Object.fromEntries(steps.map(s=>[s,false])) };
+    }
+  };
+  const [ytState, setYtState] = useState(() => loadYT());
+  const ytData = ytState.data;
+
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const t = setInterval(() => {
+      setNow(new Date());
+      // Check day reset
+      const today = todayKey();
+      if (socialState.date !== today) {
+        const fresh = { date: today, data: { "𝕏 Twitter":false,"Instagram":false,"YouTube":false,"LinkedIn":false } };
+        setSocialState(fresh);
+        localStorage.setItem("uc_social", JSON.stringify(fresh));
+      }
+      if (ytState.date !== today) {
+        const steps = ["🔍 Find Viral Video","⬇️ Download Video","📝 Take the Script","✂️ Edit the Video","📤 Post the Short"];
+        const fresh = { date: today, data: Object.fromEntries(steps.map(s=>[s,false])) };
+        setYtState(fresh);
+        localStorage.setItem("uc_yt_auto", JSON.stringify(fresh));
+      }
+    }, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [socialState.date, ytState.date]);
 
   const fmt = (tz, s) => now.toLocaleTimeString("en-US", { timeZone:tz, hour:"2-digit", minute:"2-digit", second: s?"2-digit":undefined, hour12:true });
   const fmtD = tz => now.toLocaleDateString("en-US", { timeZone:tz, weekday:"short", month:"short", day:"numeric" });
 
+  const toggleSocial = (platform) => {
+    const newData = { ...social, [platform]: !social[platform] };
+    const newState = { date: todayKey(), data: newData };
+    setSocialState(newState);
+    localStorage.setItem("uc_social", JSON.stringify(newState));
+    refreshConsToday();
+    setPopup(null);
+  };
+
+  const toggleYT = (step) => {
+    const newData = { ...ytData, [step]: !ytData[step] };
+    const newState = { date: todayKey(), data: newData };
+    setYtState(newState);
+    localStorage.setItem("uc_yt_auto", JSON.stringify(newState));
+    refreshConsToday();
+  };
+
   const cm = now.getMonth(), cy = now.getFullYear();
   const inProg  = projects.filter(p => p.status === "In Progress").length;
   const urgent  = projects.filter(p => p.priority === "Urgent" && p.status !== "Delivered").length;
-
   const doneProjsThisMonth = projects.filter(p => {
     if (p.status !== "Done" && p.status !== "Delivered") return false;
     const d = new Date(p.completedDate || "");
     return !isNaN(d) && d.getMonth() === cm && d.getFullYear() === cy;
   });
   const monthEarn = doneProjsThisMonth.reduce((s, p) => s + calcProjectEarning(p), 0);
-  const totalEarn = projects.filter(p => p.status === "Done" || p.status === "Delivered")
-                            .reduce((s, p) => s + calcProjectEarning(p), 0);
-
+  const totalEarn = projects.filter(p => p.status === "Done" || p.status === "Delivered").reduce((s, p) => s + calcProjectEarning(p), 0);
   const today = now.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" });
+  const socialDone = Object.values(social).filter(Boolean).length;
+  const ytDone = Object.values(ytData).filter(Boolean).length;
+
+  const CLOCKS = [
+    { label:"🇵🇰 Pakistan",   tz:"Asia/Karachi",        accent:"#10b981" },
+    { label:"🇺🇸 New York",   tz:"America/New_York",    accent:"#3b82f6" },
+    { label:"🇬🇧 London",     tz:"Europe/London",       accent:"#8b5cf6" },
+    { label:"🇦🇪 Dubai",      tz:"Asia/Dubai",          accent:"#f59e0b" },
+  ];
+  const visibleClocks = showAllClocks ? CLOCKS : CLOCKS.slice(0,2);
+
+  const SOCIAL_ITEMS = ["𝕏 Twitter","Instagram","YouTube","LinkedIn"];
 
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom:28 }}>
+      <div style={{ marginBottom:24 }}>
         <div style={{ fontSize:11, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:5 }}>{today}</div>
         <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Good Day, Usman 👋</div>
         <div style={{ fontSize:13, color:"#a1a1aa" }}>Usman Crealfex · Professional YouTube Video Editor</div>
       </div>
 
-      {/* Clocks */}
-      <div className="g2" style={{ marginBottom:16 }}>
-        {[
-          { label:"🇵🇰 Pakistan (PKT)", tz:"Asia/Karachi",      accent:"#10b981" },
-          { label:"🇺🇸 New York (EST)", tz:"America/New_York",  accent:"#3b82f6" },
-        ].map(cl => (
-          <div key={cl.tz} className="card" style={{ borderTop:`3px solid ${cl.accent}` }}>
-            <div style={{ fontSize:10, fontWeight:700, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:6 }}>{cl.label}</div>
-            <div style={{ fontSize:28, fontWeight:800, color:"#111", fontVariantNumeric:"tabular-nums", lineHeight:1, letterSpacing:1 }}>{fmt(cl.tz, true)}</div>
-            <div style={{ fontSize:12, color:"#a1a1aa", marginTop:5 }}>{fmtD(cl.tz)}</div>
-          </div>
-        ))}
+      {/* Clocks with expand arrow */}
+      <div style={{ marginBottom:16 }}>
+        <div className={showAllClocks ? "g3" : "g2"} style={{ marginBottom:8 }}>
+          {visibleClocks.map(cl => (
+            <div key={cl.tz} className="card" style={{ borderTop:`3px solid ${cl.accent}` }}>
+              <div style={{ fontSize:10, fontWeight:700, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:6 }}>{cl.label}</div>
+              <div style={{ fontSize:26, fontWeight:800, color:"#111", fontVariantNumeric:"tabular-nums", lineHeight:1, letterSpacing:1 }}>{fmt(cl.tz, true)}</div>
+              <div style={{ fontSize:12, color:"#a1a1aa", marginTop:5 }}>{fmtD(cl.tz)}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setShowAllClocks(s => !s)} style={{
+          display:"flex", alignItems:"center", gap:6, background:"none", border:"none",
+          color:"#a1a1aa", fontSize:12, fontWeight:600, cursor:"pointer", padding:"4px 0"
+        }}>
+          <span style={{ fontSize:16, transform: showAllClocks ? "rotate(180deg)" : "none", transition:"transform .2s", display:"inline-block" }}>▾</span>
+          {showAllClocks ? "Show less" : "Show all 4 clocks (UK · Dubai)"}
+        </button>
       </div>
 
       {/* Stats */}
       <div className="g3" style={{ marginBottom:16 }}>
         {[
-          { v:projects.length, l:"Total Projects", s:"all time",         a:"#111"    },
-          { v:inProg,          l:"In Progress",    s:"editing now",       a:"#f59e0b" },
-          { v:urgent,          l:urgent?"⚠ Urgent":"All Clear ✓", s:urgent?"needs attention":"no urgent tasks", a:urgent?"#ef4444":"#10b981" },
+          { v:projects.length, l:"Total Projects", s:"all time",      a:"#111"    },
+          { v:inProg,          l:"In Progress",    s:"editing now",    a:"#f59e0b" },
+          { v:urgent, l:urgent?"⚠ Urgent":"All Clear ✓", s:urgent?"needs attention":"no urgent tasks", a:urgent?"#ef4444":"#10b981" },
         ].map(st => (
           <div key={st.l} className="card" style={{ borderTop:`3px solid ${st.a}` }}>
             <div style={{ fontSize:46, fontWeight:800, color:st.a, lineHeight:1 }}>{st.v}</div>
@@ -442,75 +666,110 @@ function Dashboard({ projects }) {
       {/* Earnings */}
       <div className="g2" style={{ marginBottom:16 }}>
         <div className="card" style={{ background:"#111", color:"#fff" }}>
-          <div style={{ fontSize:10, letterSpacing:2, color:"#444", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>
-            This Month · {MO[cm]}
-          </div>
-          <div style={{ fontSize:46, fontWeight:800, lineHeight:1, color:monthEarn > 0 ? "#fff" : "#2a2a2a" }}>
-            ${monthEarn.toFixed(0)}
-          </div>
-          <div style={{ fontSize:12, color:"#444", marginTop:7 }}>
-            {doneProjsThisMonth.length} video{doneProjsThisMonth.length !== 1 ? "s" : ""} completed
-          </div>
+          <div style={{ fontSize:10, letterSpacing:2, color:"#444", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>This Month · {MO[cm]}</div>
+          <div style={{ fontSize:46, fontWeight:800, lineHeight:1, color:monthEarn>0?"#fff":"#2a2a2a" }}>${monthEarn.toFixed(0)}</div>
+          <div style={{ fontSize:12, color:"#444", marginTop:7 }}>{doneProjsThisMonth.length} video{doneProjsThisMonth.length!==1?"s":""} completed</div>
         </div>
         <div className="card" style={{ borderTop:"3px solid #111" }}>
-          <div style={{ fontSize:10, letterSpacing:2, color:"#a1a1aa", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>
-            All Time Earnings
-          </div>
+          <div style={{ fontSize:10, letterSpacing:2, color:"#a1a1aa", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>All Time Earnings</div>
           <div style={{ fontSize:46, fontWeight:800, lineHeight:1 }}>${totalEarn.toFixed(0)}</div>
-          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:7 }}>
-            from {projects.filter(p => p.status === "Done" || p.status === "Delivered").length} completed
-          </div>
+          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:7 }}>from {projects.filter(p=>p.status==="Done"||p.status==="Delivered").length} completed</div>
         </div>
       </div>
 
-      {/* Social + Completed */}
+      {/* Social Post Checklist + YT Automation side by side */}
       <div className="g2" style={{ marginBottom:16 }}>
+        {/* Social */}
         <div className="card">
-          <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Daily Post Checklist</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-            {Object.entries(social).map(([platform, checked]) => (
-              <button
-                key={platform}
-                onClick={() => setSocial(p => ({ ...p, [platform]: !p[platform] }))}
-                style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
-                  background: checked ? "#111" : "#fafafa",
-                  color: checked ? "#fff" : "#555",
-                  border: `1.5px solid ${checked ? "#111" : "#e8e8e8"}`,
-                  borderRadius:9, fontSize:13, fontWeight:600, textAlign:"left",
-                }}
-              >
-                <span style={{
-                  width:17, height:17, borderRadius:5,
-                  background: checked ? "#fff" : "#e4e4e4",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:10, color:"#111", flexShrink:0, fontWeight:900
-                }}>{checked ? "✓" : ""}</span>
-                {platform}
-                {checked && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>posted</span>}
-              </button>
-            ))}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontSize:14, fontWeight:700 }}>Daily Post Checklist</div>
+            <div style={{ fontSize:12, fontWeight:800, color: socialDone===4?"#16a34a":"#a1a1aa" }}>
+              {socialDone}/4 {socialDone===4?"✅":""}
+            </div>
           </div>
-          <div style={{ fontSize:11, color:"#a1a1aa", marginTop:10 }}>
-            {Object.values(social).filter(Boolean).length}/5 posted today
+          {socialDone===4 && (
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", marginBottom:10, fontSize:12, fontWeight:700, color:"#16a34a" }}>
+              🎉 +1 Consistency Point Earned Today!
+            </div>
+          )}
+          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+            {SOCIAL_ITEMS.map(platform => {
+              const checked = social[platform];
+              return (
+                <button key={platform} onClick={() => setPopup(platform)} style={{
+                  display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
+                  background: checked?"#111":"#fafafa", color: checked?"#fff":"#555",
+                  border:`1.5px solid ${checked?"#111":"#e8e8e8"}`,
+                  borderRadius:9, fontSize:13, fontWeight:600, textAlign:"left", width:"100%",
+                }}>
+                  <span style={{ width:17, height:17, borderRadius:5, background:checked?"#fff":"#e4e4e4",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:"#111", flexShrink:0, fontWeight:900 }}>
+                    {checked?"✓":""}
+                  </span>
+                  {platform}
+                  {checked && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>posted ✓</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
+        {/* YouTube Automation */}
         <div className="card">
-          <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Completed · {MO[cm]}</div>
-          {doneProjsThisMonth.length === 0
-            ? <div style={{ color:"#d4d4d8", fontSize:13 }}>No completed videos this month yet.</div>
-            : doneProjsThisMonth.map(p => (
-              <div key={p.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:"1px solid #f4f4f5", gap:8 }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.title}</div>
-                  <div style={{ fontSize:11, color:"#a1a1aa", marginTop:2 }}>{p.client}</div>
-                </div>
-                <div style={{ fontWeight:800, fontSize:13, flexShrink:0, color:"#16a34a" }}>${calcProjectEarning(p).toFixed(0)}</div>
-              </div>
-            ))
-          }
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontSize:14, fontWeight:700 }}>🎬 YouTube Auto · Daily Short</div>
+            <div style={{ fontSize:12, fontWeight:800, color: ytDone===5?"#16a34a":"#a1a1aa" }}>{ytDone}/5</div>
+          </div>
+          {ytDone===5 && (
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", marginBottom:10, fontSize:12, fontWeight:700, color:"#16a34a" }}>
+              🚀 Daily Short Done!
+            </div>
+          )}
+          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+            {Object.keys(ytData).map((step, i) => {
+              const done = ytData[step];
+              const prevDone = i===0 || Object.values(ytData)[i-1];
+              const canClick = done || prevDone; // can always uncheck, can only check if prev done
+              return (
+                <button key={step} onClick={() => canClick && toggleYT(step)} style={{
+                  display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
+                  background: done?"#111":prevDone?"#fafafa":"#f9f9f9",
+                  color: done?"#fff":prevDone?"#555":"#ccc",
+                  border:`1.5px solid ${done?"#111":prevDone?"#e8e8e8":"#f0f0f0"}`,
+                  borderRadius:9, fontSize:12.5, fontWeight:600, textAlign:"left", width:"100%",
+                  cursor: canClick?"pointer":"not-allowed",
+                }}>
+                  <span style={{ width:20, height:20, borderRadius:5,
+                    background: done?"#fff":"#e4e4e4",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:10, color:"#111", flexShrink:0, fontWeight:900 }}>
+                    {done?"✓":i+1}
+                  </span>
+                  {step}
+                  {done && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>done</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize:10, color:"#a1a1aa", marginTop:8 }}>Resets every 24 hours automatically</div>
         </div>
+      </div>
+
+      {/* Completed this month */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Completed · {MO[cm]}</div>
+        {doneProjsThisMonth.length === 0
+          ? <div style={{ color:"#d4d4d8", fontSize:13 }}>No completed videos this month yet.</div>
+          : doneProjsThisMonth.map(p => (
+            <div key={p.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:"1px solid #f4f4f5", gap:8 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.title}</div>
+                <div style={{ fontSize:11, color:"#a1a1aa", marginTop:2 }}>{p.client}</div>
+              </div>
+              <div style={{ fontWeight:800, fontSize:13, flexShrink:0, color:"#16a34a" }}>${calcProjectEarning(p).toFixed(0)}</div>
+            </div>
+          ))
+        }
       </div>
 
       {/* Recent Projects */}
@@ -525,23 +784,251 @@ function Dashboard({ projects }) {
               <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid #f4f4f5" }}>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.title}</div>
-                  <div style={{ fontSize:11.5, color:"#a1a1aa", marginTop:2 }}>
-                    {p.client}{earn > 0 ? ` · $${earn.toFixed(0)}` : ""}
-                  </div>
+                  <div style={{ fontSize:11.5, color:"#a1a1aa", marginTop:2 }}>{p.client}{earn>0?` · $${earn.toFixed(0)}`:""}</div>
                 </div>
-                <Tag bg={SS[p.status]?.bg || "#f3f4f6"} c={SS[p.status]?.c || "#666"}>{p.status}</Tag>
-                <Tag bg={PS[p.priority]?.bg || "#f9fafb"} c={PS[p.priority]?.c || "#aaa"}>{p.priority}</Tag>
-                {days !== null && (
-                  <span style={{ fontSize:11, fontWeight:700, whiteSpace:"nowrap",
-                    color: days < 0 ? "#ef4444" : days <= 3 ? "#f59e0b" : "#a1a1aa"
-                  }}>
-                    {days < 0 ? `${Math.abs(days)}d over` : `${days}d`}
+                <Tag bg={SS[p.status]?.bg||"#f3f4f6"} c={SS[p.status]?.c||"#666"}>{p.status}</Tag>
+                <Tag bg={PS[p.priority]?.bg||"#f9fafb"} c={PS[p.priority]?.c||"#aaa"}>{p.priority}</Tag>
+                {days!==null && (
+                  <span style={{ fontSize:11, fontWeight:700, whiteSpace:"nowrap", color:days<0?"#ef4444":days<=3?"#f59e0b":"#a1a1aa" }}>
+                    {days<0?`${Math.abs(days)}d over`:`${days}d`}
                   </span>
                 )}
               </div>
             );
           })
         }
+      </div>
+
+      {/* Bottom Popup for social items */}
+      {popup && (
+        <>
+          <div onClick={() => setPopup(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:999, backdropFilter:"blur(2px)" }} />
+          <div style={{
+            position:"fixed", bottom:0, left:0, right:0, zIndex:1000,
+            background:"#fff", borderRadius:"20px 20px 0 0",
+            padding:"24px 24px 40px",
+            boxShadow:"0 -8px 40px rgba(0,0,0,0.18)",
+            animation:"slideUp .25s ease"
+          }}>
+            <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+            <div style={{ width:40, height:4, background:"#e4e4e4", borderRadius:99, margin:"0 auto 20px" }} />
+            <div style={{ fontSize:11, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:8 }}>Mark as posted</div>
+            <div style={{ fontSize:22, fontWeight:800, marginBottom:20 }}>{popup}</div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => toggleSocial(popup)} style={{
+                flex:1, padding:"14px", borderRadius:12, border:"none", fontWeight:800, fontSize:15, cursor:"pointer",
+                background: social[popup]?"#f4f4f5":"#111", color: social[popup]?"#111":"#fff"
+              }}>
+                {social[popup] ? "✕ Mark as NOT posted" : "✓ Mark as Posted"}
+              </button>
+              <button onClick={() => setPopup(null)} style={{ padding:"14px 20px", borderRadius:12, border:"1.5px solid #e4e4e4", background:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────
+   CONSISTENCY TRACKER
+───────────────────────────────────────────────── */
+function Consistency() {
+  const [now, setNow] = useState(new Date());
+  const CY = now.getFullYear();
+  const [year, setYear] = useState(CY);
+  const [selMonth, setSelMonth] = useState(now.getMonth());
+  const [, forceUpdate] = useState(0);
+
+  // Re-read localStorage on every render so it stays live
+  const cons = (() => { try { return JSON.parse(localStorage.getItem("uc_cons") || "{}"); } catch { return {}; } })();
+  const todayKey = now.toISOString().slice(0,10);
+
+  // Live today points from all 3 sources
+  const todayPts = calcTodayPoints(todayKey);
+  const todayTotal = todayPts.social + todayPts.yt + todayPts.namaz;
+
+  // Poll every 5 seconds so Consistency updates when you switch tabs
+  useEffect(() => {
+    const t = setInterval(() => { setNow(new Date()); forceUpdate(n => n+1); }, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Build month data
+  const monthData = MO.map((m, mi) => {
+    let totalPts = 0;
+    const daysInMonth = new Date(year, mi+1, 0).getDate();
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${year}-${String(mi+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const isToday = key === todayKey;
+      const pts = isToday ? todayTotal : (cons[key]?.total || 0);
+      totalPts += pts;
+      days.push({ d, key, pts, isToday });
+    }
+    return { m, mi, totalPts, days, daysInMonth };
+  });
+
+  // Total points this year
+  const totalYearPts = Object.entries(cons)
+    .filter(([k]) => k.startsWith(year+"-"))
+    .reduce((s, [k, v]) => s + (k === todayKey ? todayTotal : (v?.total || 0)), todayTotal > 0 ? todayTotal : 0);
+
+  // Streak: consecutive days with any points
+  let streak = 0;
+  const cd = new Date(now);
+  while (true) {
+    const k = cd.toISOString().slice(0,10);
+    const pts = k === todayKey ? todayTotal : (cons[k]?.total || 0);
+    if (pts > 0) { streak++; cd.setDate(cd.getDate()-1); }
+    else break;
+  }
+
+  const md = monthData[selMonth];
+
+  // Color per points (0-10)
+  const ptColor = (pts) => {
+    if (pts === 0) return { bg:"transparent", color:"#555", border:"none" };
+    if (pts <= 2)  return { bg:"#d1fae5", color:"#065f46", border:"none" };
+    if (pts <= 5)  return { bg:"#6ee7b7", color:"#064e3b", border:"none" };
+    if (pts <= 8)  return { bg:"#34d399", color:"#022c22", border:"none" };
+    return { bg:"#111", color:"#fff", border:"none" }; // 9-10
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Consistency Tracker</div>
+      <div style={{ fontSize:13, color:"#a1a1aa", marginBottom:20 }}>Max 10 pts/day · Social 4pt · YouTube Short 5pt · Namaz 1pt</div>
+
+      {/* Today live breakdown */}
+      <div className="card" style={{ marginBottom:16, borderTop:"3px solid #111" }}>
+        <div style={{ fontWeight:800, fontSize:14, marginBottom:12 }}>Today's Points — Live</div>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:10 }}>
+          {[
+            { l:"📱 Social Posts", pts: todayPts.social, max:4 },
+            { l:"🎬 YouTube Short", pts: todayPts.yt,     max:5 },
+            { l:"🕌 Daily Namaz",  pts: todayPts.namaz,  max:1 },
+          ].map(it => (
+            <div key={it.l} style={{ flex:"1 1 120px", background:"#f9f9f9", border:"1px solid #e8e8e8", borderRadius:10, padding:"10px 14px" }}>
+              <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4 }}>{it.l}</div>
+              <div style={{ fontWeight:800, fontSize:22, color: it.pts===it.max?"#16a34a":"#111" }}>
+                {it.pts}<span style={{ fontSize:13, color:"#a1a1aa", fontWeight:500 }}>/{it.max}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ flex:1, height:10, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
+            <div style={{ height:"100%", background: todayTotal===10?"#111":todayTotal>=7?"#34d399":todayTotal>=4?"#6ee7b7":"#a7f3d0",
+              borderRadius:99, width:`${(todayTotal/10)*100}%`, transition:"width .4s" }} />
+          </div>
+          <div style={{ fontWeight:800, fontSize:20, minWidth:60, textAlign:"right", color: todayTotal===10?"#111":"#555" }}>
+            {todayTotal}/10
+          </div>
+        </div>
+        {todayTotal === 10 && (
+          <div style={{ marginTop:10, background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", fontSize:12, fontWeight:700, color:"#16a34a" }}>
+            MashaAllah! Perfect 10/10 today ✓
+          </div>
+        )}
+      </div>
+
+      {/* Year selector */}
+      <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+        {[CY-1, CY, CY+1].map(y => (
+          <button key={y} className="btn-sm"
+            style={{ padding:"8px 18px", fontSize:13, fontWeight:700, ...(year===y?{background:"#111",color:"#fff",borderColor:"#111"}:{}) }}
+            onClick={() => setYear(y)}>{y}</button>
+        ))}
+      </div>
+
+      {/* Stats cards */}
+      <div className="g3" style={{ marginBottom:16 }}>
+        {[
+          { v:streak,        l:"Current Streak", s:"consecutive days", a:"#f59e0b" },
+          { v:totalYearPts,  l:"Total Points",   s:`in ${year}`,       a:"#111"    },
+          { v:`${todayTotal}/10`, l:"Today",     s: todayTotal===10?"Perfect!":todayTotal>0?"Keep going":"Start now", a: todayTotal===10?"#16a34a":todayTotal>0?"#f59e0b":"#ef4444" },
+        ].map(st => (
+          <div key={st.l} className="card" style={{ borderTop:`3px solid ${st.a}` }}>
+            <div style={{ fontSize:40, fontWeight:800, color:st.a, lineHeight:1 }}>{st.v}</div>
+            <div style={{ fontSize:13, fontWeight:700, marginTop:7 }}>{st.l}</div>
+            <div style={{ fontSize:11, color:"#a1a1aa", marginTop:3 }}>{st.s}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Month tabs */}
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+        {MO.map((m, i) => (
+          <button key={m} className="btn-sm"
+            style={{ padding:"7px 12px", position:"relative",
+              ...(selMonth===i?{background:"#111",color:"#fff",borderColor:"#111"}:
+                monthData[i].totalPts>0?{borderColor:"#111",fontWeight:700}:{color:"#a1a1aa"}) }}
+            onClick={() => setSelMonth(i)}>
+            {m}
+            {monthData[i].totalPts > 0 && selMonth!==i && (
+              <span style={{ position:"absolute", top:2, right:2, width:5, height:5, background:"#10b981", borderRadius:"50%", display:"block" }} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Calendar */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+          <div style={{ fontWeight:800, fontSize:15 }}>{MO[selMonth]} {year}</div>
+          <div style={{ fontSize:13, fontWeight:700, color:"#111" }}>{md.totalPts} pts total</div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:5 }}>
+          {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+            <div key={d} style={{ textAlign:"center", fontSize:10, color:"#a1a1aa", fontWeight:700, paddingBottom:4 }}>{d}</div>
+          ))}
+          {Array(new Date(year, selMonth, 1).getDay()).fill(null).map((_,i) => <div key={"e"+i} />)}
+          {md.days.map(({ d, key, pts, isToday }) => {
+            const col = ptColor(pts);
+            return (
+              <div key={d} title={`${pts}/10 pts`} style={{
+                aspectRatio:"1", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                borderRadius:8, fontSize:11, fontWeight: pts>0||isToday?800:400,
+                background: col.bg,
+                color: col.color,
+                border: isToday && pts===0 ? "2px solid #111" : col.border,
+                cursor:"default",
+              }}>
+                <div>{d}</div>
+                {pts > 0 && <div style={{ fontSize:8, opacity:.7, lineHeight:1 }}>{pts}pt</div>}
+              </div>
+            );
+          })}
+        </div>
+        {/* Legend */}
+        <div style={{ display:"flex", gap:10, marginTop:14, fontSize:10, color:"#a1a1aa", flexWrap:"wrap" }}>
+          {[["#d1fae5","1-2pt"],["#6ee7b7","3-5pt"],["#34d399","6-8pt"],["#111","9-10pt"]].map(([bg,l]) => (
+            <span key={l} style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <span style={{ display:"inline-block", width:10, height:10, background:bg, borderRadius:3 }} />{l}
+            </span>
+          ))}
+          <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #111", borderRadius:3 }} />Today
+          </span>
+        </div>
+      </div>
+
+      {/* Monthly breakdown */}
+      <div className="card">
+        <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>Monthly Overview {year}</div>
+        {monthData.map(({ m, totalPts, daysInMonth }) => (
+          <div key={m} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:"1px solid #f4f4f5" }}>
+            <div style={{ width:32, fontSize:12, fontWeight:700, color:"#555" }}>{m}</div>
+            <div style={{ flex:1, height:8, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
+              <div style={{ height:"100%", background: totalPts>0?"#111":"transparent", borderRadius:99,
+                width:`${Math.min((totalPts/(daysInMonth*10))*100, 100)}%`, transition:"width .3s" }} />
+            </div>
+            <div style={{ width:50, textAlign:"right", fontSize:12, fontWeight:700, color: totalPts>0?"#111":"#d4d4d8" }}>{totalPts}pt</div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -552,7 +1039,7 @@ function Dashboard({ projects }) {
 ───────────────────────────────────────────────── */
 function Projects({ projects, saveProjects, clients, saveClients }) {
   const BLANK = {
-    id:"", client:clients[0]||"", title:"", rawLink:"", doneLink:"",
+    id:"", client:"", title:"", rawLink:"", doneLink:"",
     status:"Not Started", priority:"Normal", deadline:"", money:"",
     rateType:"per_video", rate:"", videoMins:"", qty:"1", completedDate:""
   };
@@ -562,6 +1049,8 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
   const [fSt, setFSt]       = useState("All");
   const [newCl, setNewCl]   = useState("");
   const [showMgr, setShowMgr] = useState(false);
+  const [renamingCl, setRenamingCl] = useState(null); // client name being renamed
+  const [renameVal, setRenameVal]   = useState("");
   const topRef = useRef(null);
   const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -581,7 +1070,7 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
     if (!isDone) cd = "";
     const final = { ...form, id, completedDate: cd, money: form.rate ? calcMoney(form).toString() : form.money };
     saveProjects(editing ? projects.map(p => p.id === editing ? final : p) : [...projects, final]);
-    setForm({ ...BLANK, client: clients[0] || "" });
+    setForm({ ...BLANK });
     setEditing(null);
   };
 
@@ -607,13 +1096,46 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
       {showMgr && (
         <div className="card" style={{ marginBottom:18, background:"#fafafa", border:"1.5px dashed #e0e0e0" }}>
           <div style={{ fontWeight:800, fontSize:14, marginBottom:12 }}>Client Manager</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
             {clients.map(c => (
-              <div key={c} style={{ display:"flex", alignItems:"center", gap:6, background:"#fff", border:"1px solid #e4e4e4", borderRadius:8, padding:"6px 12px" }}>
-                <span style={{ fontSize:12.5, fontWeight:600 }}>{c}</span>
-                {!["Jon Mac","Shrey","Tyler","Danny Rio"].includes(c) && (
-                  <button onClick={() => saveClients(clients.filter(x => x !== c))}
-                    style={{ border:"none", background:"none", color:"#ef4444", cursor:"pointer", fontSize:14, padding:"0 0 0 4px" }}>✕</button>
+              <div key={c} style={{ display:"flex", alignItems:"center", gap:8, background:"#fff", border:"1px solid #e4e4e4", borderRadius:8, padding:"8px 12px" }}>
+                {renamingCl === c ? (
+                  <>
+                    <input className="inp" style={{ flex:1, padding:"5px 9px", fontSize:13 }} value={renameVal}
+                      onChange={e => setRenameVal(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const n = renameVal.trim();
+                          if (n && n !== c && !clients.includes(n)) {
+                            saveClients(clients.map(x => x===c?n:x));
+                            saveProjects(projects.map(p => p.client===c?{...p,client:n}:p));
+                          }
+                          setRenamingCl(null);
+                        }
+                        if (e.key === "Escape") setRenamingCl(null);
+                      }}
+                      autoFocus
+                    />
+                    <button onClick={() => {
+                      const n = renameVal.trim();
+                      if (n && n!==c && !clients.includes(n)) {
+                        saveClients(clients.map(x => x===c?n:x));
+                        saveProjects(projects.map(p => p.client===c?{...p,client:n}:p));
+                      }
+                      setRenamingCl(null);
+                    }} style={{ padding:"5px 10px", background:"#111", color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer" }}>✓ Save</button>
+                    <button onClick={() => setRenamingCl(null)} style={{ padding:"5px 10px", background:"#f4f4f5", color:"#555", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer" }}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize:13, fontWeight:600, flex:1 }}>{c}</span>
+                    <button onClick={() => { setRenamingCl(c); setRenameVal(c); }}
+                      style={{ padding:"4px 10px", background:"#f4f4f5", color:"#555", border:"1px solid #e4e4e4", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer" }}>✏ Rename</button>
+                    {!["Jon Mac","Shrey","Tyler","Danny Rio"].includes(c) && (
+                      <button onClick={() => saveClients(clients.filter(x => x!==c))}
+                        style={{ padding:"4px 10px", background:"#fff1f2", color:"#be123c", border:"1px solid #fecdd3", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer" }}>🗑 Delete</button>
+                    )}
+                  </>
                 )}
               </div>
             ))}
@@ -716,7 +1238,7 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <button className="btn-primary" onClick={submit}>{editing ? "✓ Update" : "+ Add Project"}</button>
           {editing && (
-            <button className="btn-ghost" onClick={() => { setForm({ ...BLANK, client: clients[0] || "" }); setEditing(null); }}>
+            <button className="btn-ghost" onClick={() => { setForm({ ...BLANK }); setEditing(null); }}>
               Cancel
             </button>
           )}
@@ -1350,6 +1872,201 @@ function Messages() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────
+   MUSLIM DAILY
+───────────────────────────────────────────────── */
+function MuslimDaily() {
+  const todayKey = () => new Date().toISOString().slice(0,10);
+
+  const PRAYERS = [
+    { id:"fajr",    label:"Fajr",    arabic:"الفجر",    time:"Before sunrise",  icon:"🌙" },
+    { id:"dhuhr",   label:"Dhuhr",   arabic:"الظهر",    time:"Midday",          icon:"☀️" },
+    { id:"asr",     label:"Asr",     arabic:"العصر",    time:"Afternoon",       icon:"🌤️" },
+    { id:"maghrib", label:"Maghrib", arabic:"المغرب",   time:"After sunset",    icon:"🌅" },
+    { id:"isha",    label:"Isha",    arabic:"العشاء",   time:"Night",           icon:"🌃" },
+  ];
+
+  const SURAHS = [
+    { id:"fatiha",   label:"Al-Fatiha",    arabic:"الفاتحة",     desc:"7 verses · Opening" },
+    { id:"ikhlas",   label:"Al-Ikhlas",    arabic:"الإخلاص",     desc:"4 verses · Sincerity" },
+    { id:"falaq",    label:"Al-Falaq",     arabic:"الفلق",       desc:"5 verses · Daybreak" },
+    { id:"nas",      label:"An-Nas",       arabic:"الناس",       desc:"6 verses · Mankind" },
+    { id:"ayatul",   label:"Ayatul Kursi", arabic:"آية الكرسي",  desc:"2:255 · The Throne" },
+    { id:"kahf",     label:"Al-Kahf",      arabic:"الكهف",       desc:"Friday recitation" },
+  ];
+
+  const loadData = () => {
+    try {
+      const raw = localStorage.getItem("uc_muslim");
+      if (!raw) return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 };
+      const d = JSON.parse(raw);
+      if (d.date !== todayKey()) return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 };
+      return d;
+    } catch { return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 }; }
+  };
+
+  const [data, setData] = useState(() => loadData());
+  const [now, setNow]   = useState(new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNow(new Date());
+      const today = todayKey();
+      if (data.date !== today) {
+        const fresh = { date: today, prayers: {}, surahs: {}, tasbih: 0 };
+        setData(fresh);
+        localStorage.setItem("uc_muslim", JSON.stringify(fresh));
+      }
+    }, 10000);
+    return () => clearInterval(t);
+  }, [data.date]);
+
+  const saveData = (d) => { setData(d); localStorage.setItem("uc_muslim", JSON.stringify(d)); };
+
+  const togglePrayer = (id) => {
+    const newData = { ...data, prayers: { ...data.prayers, [id]: !data.prayers[id] } };
+    saveData(newData);
+    refreshConsToday();
+  };
+  const toggleSurah = (id) => {
+    const newData = { ...data, surahs: { ...data.surahs, [id]: !data.surahs[id] } };
+    saveData(newData);
+  };
+  const addTasbih = (n) => {
+    const newData = { ...data, tasbih: (data.tasbih || 0) + n };
+    saveData(newData);
+  };
+  const resetTasbih = () => {
+    const newData = { ...data, tasbih: 0 };
+    saveData(newData);
+  };
+
+  const prayersDone = PRAYERS.filter(p => data.prayers[p.id]).length;
+  const surahsDone  = SURAHS.filter(s => data.surahs[s.id]).length;
+  const today = now.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" });
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ fontSize:11, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:5 }}>{today}</div>
+        <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Muslim Daily Tracker</div>
+        <div style={{ fontSize:13, color:"#a1a1aa" }}>Resets every 24 hours · Stay consistent with your deen</div>
+      </div>
+
+      {/* Progress overview */}
+      <div className="g2" style={{ marginBottom:16 }}>
+        <div className="card" style={{ borderTop:"3px solid #111", background: prayersDone===5?"#111":"#fff" }}>
+          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color: prayersDone===5?"#444":"#a1a1aa" }}>
+            Daily Prayers
+          </div>
+          <div style={{ fontSize:46, fontWeight:800, lineHeight:1, color: prayersDone===5?"#fff":"#111" }}>
+            {prayersDone}/5
+          </div>
+          <div style={{ fontSize:12, marginTop:7, color: prayersDone===5?"#555":"#a1a1aa" }}>
+            {prayersDone===5 ? "Alhamdulillah ✓ All 5 prayed" : `${5-prayersDone} remaining today`}
+          </div>
+        </div>
+        <div className="card" style={{ borderTop:"3px solid #111" }}>
+          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:"#a1a1aa" }}>
+            Quran / Surahs
+          </div>
+          <div style={{ fontSize:46, fontWeight:800, lineHeight:1 }}>{surahsDone}/{SURAHS.length}</div>
+          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:7 }}>
+            {surahsDone===SURAHS.length ? "MashaAllah! All read ✓" : `${SURAHS.length-surahsDone} remaining`}
+          </div>
+        </div>
+      </div>
+
+      {/* 5 Prayers */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:15, marginBottom:14 }}>5 Daily Prayers — Salah</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {PRAYERS.map(p => {
+            const done = !!data.prayers[p.id];
+            return (
+              <button key={p.id} onClick={() => togglePrayer(p.id)} style={{
+                display:"flex", alignItems:"center", gap:12, padding:"12px 14px",
+                background: done?"#111":"#fafafa", color: done?"#fff":"#333",
+                border:`1.5px solid ${done?"#111":"#e8e8e8"}`,
+                borderRadius:10, textAlign:"left", width:"100%", cursor:"pointer",
+              }}>
+                <span style={{ fontSize:20, flexShrink:0 }}>{p.icon}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:800, fontSize:14 }}>{p.label}</div>
+                  <div style={{ fontSize:11, marginTop:2, color: done?"#555":"#a1a1aa" }}>
+                    {p.arabic} · {p.time}
+                  </div>
+                </div>
+                <div style={{
+                  width:24, height:24, borderRadius:6, flexShrink:0,
+                  background: done?"#fff":"#e4e4e4",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:13, color:"#111", fontWeight:900,
+                }}>{done?"✓":""}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Daily Surahs */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:15, marginBottom:14 }}>Daily Surahs — Quran</div>
+        <div className="g2">
+          {SURAHS.map(s => {
+            const done = !!data.surahs[s.id];
+            return (
+              <button key={s.id} onClick={() => toggleSurah(s.id)} style={{
+                display:"flex", alignItems:"center", gap:10, padding:"12px 14px",
+                background: done?"#111":"#fafafa", color: done?"#fff":"#333",
+                border:`1.5px solid ${done?"#111":"#e8e8e8"}`,
+                borderRadius:10, textAlign:"left", cursor:"pointer",
+              }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:800, fontSize:13 }}>{s.label}</div>
+                  <div style={{ fontSize:12, fontWeight:700, color: done?"#555":"#a1a1aa", marginTop:1 }}>{s.arabic}</div>
+                  <div style={{ fontSize:10, color: done?"#444":"#a1a1aa", marginTop:2 }}>{s.desc}</div>
+                </div>
+                <div style={{
+                  width:22, height:22, borderRadius:5, flexShrink:0,
+                  background: done?"#fff":"#e4e4e4",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:12, color:"#111", fontWeight:900,
+                }}>{done?"✓":""}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tasbih Counter */}
+      <div className="card">
+        <div style={{ fontWeight:800, fontSize:15, marginBottom:6 }}>Tasbih Counter</div>
+        <div style={{ fontSize:12, color:"#a1a1aa", marginBottom:16 }}>SubhanAllah · Alhamdulillah · Allahu Akbar</div>
+        <div style={{ textAlign:"center", marginBottom:16 }}>
+          <div style={{ fontSize:72, fontWeight:800, color:"#111", lineHeight:1 }}>{data.tasbih || 0}</div>
+          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:6 }}>
+            {(data.tasbih || 0) >= 99 ? `${Math.floor((data.tasbih||0)/33)} sets of 33` : `${33 - ((data.tasbih||0)%33)} to next 33`}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+          {[1,5,10,33].map(n => (
+            <button key={n} onClick={() => addTasbih(n)} style={{
+              padding:"12px 20px", background:"#111", color:"#fff", border:"none",
+              borderRadius:10, fontSize:14, fontWeight:800, cursor:"pointer", minWidth:60
+            }}>+{n}</button>
+          ))}
+          <button onClick={resetTasbih} style={{
+            padding:"12px 16px", background:"#fff1f2", color:"#be123c",
+            border:"1.5px solid #fecdd3", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer"
+          }}>Reset</button>
+        </div>
       </div>
     </div>
   );
