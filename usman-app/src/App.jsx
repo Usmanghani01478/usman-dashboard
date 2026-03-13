@@ -26,6 +26,7 @@ const STYLES = `
   button { cursor: pointer; transition: opacity .15s, transform .1s; }
   button:hover { opacity: .82; }
   button:active { transform: scale(.97); }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   /* ── Shell ── */
   .shell {
@@ -257,6 +258,82 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
+/* ── JSONBin Cloud Sync ── */
+const JBIN_KEY = "$2a$10$Xzh6Kjim012g5jUv09nL6eeTwNnDThLfZ0ROATHAFkJtrAjplxgyi";
+const JBIN_URL = "https://api.jsonbin.io/v3/b";
+
+function getAllData() {
+  return {
+    proj:    load("uc_proj",    []),
+    clients: load("uc_clients", ["Jon Mac","Shrey","Tyler","Danny Rio"]),
+    earn:    load("uc_earn",    {}),
+    social:  load("uc_social",  {}),
+    yt:      load("uc_yt_auto", {}),
+    cons:    load("uc_cons",    {}),
+    muslim:  load("uc_muslim",  {}),
+    ts:      Date.now(),
+  };
+}
+
+function applyAllData(data, setters) {
+  if (!data) return;
+  const { setProjects, setClients } = setters;
+  if (data.proj)    { save("uc_proj",    data.proj);    setProjects(data.proj); }
+  if (data.clients) { save("uc_clients", data.clients); setClients(data.clients); }
+  if (data.earn)    save("uc_earn",    data.earn);
+  if (data.social)  save("uc_social",  data.social);
+  if (data.yt)      save("uc_yt_auto", data.yt);
+  if (data.cons)    save("uc_cons",    data.cons);
+  if (data.muslim)  save("uc_muslim",  data.muslim);
+}
+
+async function cloudPush(setSyncStatus) {
+  try {
+    if (setSyncStatus) setSyncStatus("syncing");
+    const binId = localStorage.getItem("uc_bin_id");
+    const body  = JSON.stringify(getAllData());
+    const headers = { "Content-Type":"application/json", "X-ACCESS-KEY": JBIN_KEY, "X-Bin-Private":"true" };
+    if (!binId) {
+      // Create new bin
+      const r = await fetch(JBIN_URL, { method:"POST", headers: { ...headers, "X-Bin-Name":"usman-crealfex" }, body });
+      if (!r.ok) throw new Error("create failed");
+      const j = await r.json();
+      localStorage.setItem("uc_bin_id", j.metadata.id);
+    } else {
+      const r = await fetch(`${JBIN_URL}/${binId}`, { method:"PUT", headers, body });
+      if (!r.ok) throw new Error("update failed");
+    }
+    if (setSyncStatus) setSyncStatus("ok");
+  } catch(e) {
+    console.error("cloudPush:", e);
+    if (setSyncStatus) setSyncStatus("err");
+  }
+}
+
+async function cloudPull(setters) {
+  try {
+    const binId = localStorage.getItem("uc_bin_id");
+    if (!binId) return false;
+    const r = await fetch(`${JBIN_URL}/${binId}/latest`, {
+      headers: { "X-ACCESS-KEY": JBIN_KEY }
+    });
+    if (!r.ok) return false;
+    const j = await r.json();
+    const data = j.record;
+    // Only apply if cloud is newer
+    const localTs = load("uc_ts", 0);
+    if (data.ts && data.ts > localTs) {
+      applyAllData(data, setters);
+      save("uc_ts", data.ts);
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.error("cloudPull:", e);
+    return false;
+  }
+}
+
 function calcProjectEarning(p) {
   const r = parseFloat(p.rate) || 0;
   const q = parseFloat(p.qty)  || 1;
@@ -304,107 +381,34 @@ function refreshConsToday() {
 }
 
 /* ─────────────────────────────────────────────────
-   SYNC PANEL  (sidebar bottom)
+   CLOUD SYNC STATUS  (sidebar bottom)
 ───────────────────────────────────────────────── */
-function SyncPanel({ setProjects, setClients }) {
-  const [mode, setMode]       = useState(null); // null | "copy" | "paste"
-  const [syncCode, setSyncCode] = useState("");
-  const [pasteVal, setPasteVal] = useState("");
-  const [msg, setMsg]         = useState("");
-
-  const genCode = () => {
-    try {
-      const data = {
-        p: JSON.parse(localStorage.getItem("uc_proj")    || "[]"),
-        c: JSON.parse(localStorage.getItem("uc_clients") || "[]"),
-        e: JSON.parse(localStorage.getItem("uc_earn")    || "{}"),
-        t: Date.now(),
-      };
-      const code = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-      setSyncCode(code);
-      navigator.clipboard.writeText(code).catch(()=>{});
-      setMsg("✅ Code copied! Paste on other device.");
-    } catch { setMsg("❌ Error generating code"); }
-  };
-
-  const applyCode = () => {
-    try {
-      const data = JSON.parse(decodeURIComponent(escape(atob(pasteVal.trim()))));
-      if (data.p) { localStorage.setItem("uc_proj",    JSON.stringify(data.p)); setProjects(data.p); }
-      if (data.c) { localStorage.setItem("uc_clients", JSON.stringify(data.c)); setClients(data.c); }
-      if (data.e) { localStorage.setItem("uc_earn",    JSON.stringify(data.e)); }
-      setMsg("✅ Synced! All data updated.");
-      setPasteVal(""); setMode(null);
-    } catch { setMsg("❌ Invalid code. Try again."); }
-  };
-
-  const btnStyle = { width:"100%", padding:"7px 10px", background:"#1a1a1a", color:"#555",
-    border:"1px solid #222", borderRadius:7, fontSize:10, fontWeight:700, cursor:"pointer",
-    marginBottom:5, textAlign:"center" };
-
+function CloudSyncStatus({ status, onSync }) {
+  const icons  = { idle:"☁", syncing:"↻", ok:"✓", err:"✕" };
+  const colors = { idle:"#333", syncing:"#f59e0b", ok:"#10b981", err:"#ef4444" };
+  const labels = { idle:"Cloud Sync", syncing:"Syncing...", ok:"Synced", err:"Sync Error" };
   return (
-    <div className="specs" style={{ padding:"12px 14px 16px", borderTop:"1px solid #1a1a1a" }}>
-      <div style={{ fontSize:9, color:"#2a2a2a", lineHeight:1.8, marginBottom:10 }}>
+    <div style={{ padding:"10px 14px 14px", borderTop:"1px solid #1a1a1a" }}>
+      <div style={{ fontSize:9, color:"#2a2a2a", lineHeight:1.8, marginBottom:8 }}>
         i5 9th · GTX 1660S · 32GB DDR3
       </div>
-
-      {/* Sync Buttons */}
-      {!mode && <>
-        <button style={btnStyle} onClick={() => { setMode("copy"); genCode(); }}>
-          📤 COPY SYNC CODE
-        </button>
-        <button style={btnStyle} onClick={() => { setMode("paste"); setMsg(""); }}>
-          📥 PASTE SYNC CODE
-        </button>
-      </>}
-
-      {/* Copy Mode */}
-      {mode === "copy" && (
-        <div>
-          <div style={{ fontSize:9, color:"#555", marginBottom:6 }}>Copy this code → paste on other device:</div>
-          <textarea
-            readOnly
-            value={syncCode}
-            style={{ width:"100%", height:52, background:"#0a0a0a", color:"#10b981",
-              border:"1px solid #222", borderRadius:6, fontSize:8, padding:"6px",
-              resize:"none", fontFamily:"monospace", wordBreak:"break-all" }}
-            onClick={e => { e.target.select(); navigator.clipboard.writeText(syncCode).catch(()=>{}); }}
-          />
-          <button style={btnStyle} onClick={() => { navigator.clipboard.writeText(syncCode).catch(()=>{}); setMsg("✅ Copied!"); }}>
-            📋 COPY AGAIN
-          </button>
-          <button style={{ ...btnStyle, marginBottom:0, color:"#333" }} onClick={() => { setMode(null); setMsg(""); setSyncCode(""); }}>
-            ✕ Close
-          </button>
-        </div>
-      )}
-
-      {/* Paste Mode */}
-      {mode === "paste" && (
-        <div>
-          <div style={{ fontSize:9, color:"#555", marginBottom:6 }}>Paste sync code from other device:</div>
-          <textarea
-            value={pasteVal}
-            onChange={e => setPasteVal(e.target.value)}
-            placeholder="Paste code here..."
-            style={{ width:"100%", height:52, background:"#0a0a0a", color:"#a3e635",
-              border:"1px solid #333", borderRadius:6, fontSize:8, padding:"6px",
-              resize:"none", fontFamily:"monospace", wordBreak:"break-all" }}
-          />
-          <button style={{ ...btnStyle, color: pasteVal ? "#a3e635" : "#555" }}
-            onClick={applyCode} disabled={!pasteVal.trim()}>
-            ✅ APPLY SYNC
-          </button>
-          <button style={{ ...btnStyle, marginBottom:0, color:"#333" }} onClick={() => { setMode(null); setMsg(""); setPasteVal(""); }}>
-            ✕ Cancel
-          </button>
-        </div>
-      )}
-
-      {msg && (
-        <div style={{ fontSize:9, color: msg.startsWith("✅") ? "#10b981" : "#ef4444",
-          marginTop:6, fontWeight:700, wordBreak:"break-word" }}>{msg}</div>
-      )}
+      <button onClick={onSync} style={{
+        width:"100%", padding:"7px 10px", background:"#0d0d0d",
+        border:`1px solid ${colors[status]}`,
+        borderRadius:7, fontSize:10, fontWeight:700, cursor:"pointer",
+        color: colors[status], display:"flex", alignItems:"center",
+        justifyContent:"center", gap:6,
+        animation: status==="syncing" ? "spin 1s linear infinite" : "none",
+      }}>
+        <span style={{ fontSize:12, display:"inline-block",
+          animation: status==="syncing" ? "spin .8s linear infinite" : "none" }}>
+          {icons[status]}
+        </span>
+        {labels[status]}
+      </button>
+      <div style={{ fontSize:8, color:"#2a2a2a", textAlign:"center", marginTop:5 }}>
+        Auto-syncs across all devices
+      </div>
     </div>
   );
 }
@@ -416,9 +420,28 @@ export default function App() {
   const [tab, setTab]         = useState("dashboard");
   const [projects, setProjects] = useState(() => load("uc_proj", []));
   const [clients,  setClients]  = useState(() => load("uc_clients", ["Jon Mac","Shrey","Tyler","Danny Rio"]));
+  const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | ok | err
+  const pushTimer = useRef(null);
 
-  const saveProjects = d => { setProjects(d); save("uc_proj", d); };
-  const saveClients  = d => { setClients(d);  save("uc_clients", d); };
+  // On mount: pull latest data from cloud
+  useEffect(() => {
+    setSyncStatus("syncing");
+    cloudPull({ setProjects, setClients }).then(pulled => {
+      setSyncStatus(pulled ? "ok" : "idle");
+    });
+  }, []);
+
+  // Debounced push — waits 2s after last change then pushes
+  const schedulePush = () => {
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => cloudPush(setSyncStatus), 2000);
+  };
+
+  // Expose globally so Dashboard/MuslimDaily can trigger push on social/yt/namaz changes
+  useEffect(() => { window.__cloudPush = schedulePush; }, []);
+
+  const saveProjects = d => { setProjects(d); save("uc_proj", d); schedulePush(); };
+  const saveClients  = d => { setClients(d);  save("uc_clients", d); schedulePush(); };
 
   const NAV = [
     { id:"dashboard",    icon:"⬡", label:"Dashboard"   },
@@ -478,7 +501,7 @@ export default function App() {
             ))}
           </nav>
 
-          <SyncPanel setProjects={setProjects} setClients={setClients} />
+          <CloudSyncStatus status={syncStatus} onSync={() => cloudPush(setSyncStatus)} />
         </aside>
 
         {/* ── Main ── */}
@@ -584,6 +607,7 @@ function Dashboard({ projects }) {
     setSocialState(newState);
     localStorage.setItem("uc_social", JSON.stringify(newState));
     refreshConsToday();
+    if (window.__cloudPush) window.__cloudPush();
     setPopup(null);
   };
 
@@ -593,6 +617,7 @@ function Dashboard({ projects }) {
     setYtState(newState);
     localStorage.setItem("uc_yt_auto", JSON.stringify(newState));
     refreshConsToday();
+    if (window.__cloudPush) window.__cloudPush();
   };
 
   const cm = now.getMonth(), cy = now.getFullYear();
@@ -1940,6 +1965,7 @@ function MuslimDaily() {
     const newData = { ...data, prayers: { ...data.prayers, [id]: !data.prayers[id] } };
     saveData(newData);
     refreshConsToday();
+    if (window.__cloudPush) window.__cloudPush();
   };
   const toggleSurah = (id) => {
     const newData = { ...data, surahs: { ...data.surahs, [id]: !data.surahs[id] } };
