@@ -857,6 +857,7 @@ function Consistency() {
   }, []);
 
   // Build month data
+  const currentYear = now.getFullYear();
   const monthData = MO.map((m, mi) => {
     let totalPts = 0;
     const daysInMonth = new Date(year, mi+1, 0).getDate();
@@ -864,17 +865,24 @@ function Consistency() {
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${year}-${String(mi+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       const isToday = key === todayKey;
-      const pts = isToday ? todayTotal : (cons[key]?.total || 0);
+      // Only show live points for today if viewing current year
+      const pts = (isToday && year === currentYear) ? todayTotal : (cons[key]?.total || 0);
       totalPts += pts;
-      days.push({ d, key, pts, isToday });
+      days.push({ d, key, pts, isToday: isToday && year === currentYear });
     }
     return { m, mi, totalPts, days, daysInMonth };
   });
 
   // Total points this year
-  const totalYearPts = Object.entries(cons)
-    .filter(([k]) => k.startsWith(year+"-"))
-    .reduce((s, [k, v]) => s + (k === todayKey ? todayTotal : (v?.total || 0)), todayTotal > 0 ? todayTotal : 0);
+  const totalYearPts = (() => {
+    let sum = 0;
+    const currentYear = now.getFullYear();
+    // Only include today's live points if viewing current year
+    if (year === currentYear) sum += todayTotal;
+    Object.entries(cons).filter(([k]) => k.startsWith(year+"-") && k !== todayKey)
+      .forEach(([k, v]) => { sum += v?.total || 0; });
+    return sum;
+  })();
 
   // Streak: consecutive days with any points
   let streak = 0;
@@ -937,7 +945,7 @@ function Consistency() {
 
       {/* Year selector */}
       <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
-        {[CY-1, CY, CY+1].map(y => (
+        {[CY, CY+1, CY+2].map(y => (
           <button key={y} className="btn-sm"
             style={{ padding:"8px 18px", fontSize:13, fontWeight:700, ...(year===y?{background:"#111",color:"#fff",borderColor:"#111"}:{}) }}
             onClick={() => setYear(y)}>{y}</button>
@@ -1345,8 +1353,8 @@ function Earnings({ projects, clients }) {
   const [form, setForm] = useState({ ...BLANK_FORM });
   const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const BASE_YEARS = [CY - 1, CY, CY + 1];
-  const EXTRA_YEARS = [CY+2, CY+3, CY+4, CY+5].filter(y => y <= 2030);
+  const BASE_YEARS = [CY, CY + 1];
+  const EXTRA_YEARS = [CY+2, CY+3, CY+4].filter(y => y <= 2030);
   const YEARS = showMore ? [...BASE_YEARS, ...EXTRA_YEARS] : BASE_YEARS;
 
   useEffect(() => {
