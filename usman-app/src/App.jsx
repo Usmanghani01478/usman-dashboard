@@ -384,31 +384,107 @@ function refreshConsToday() {
    CLOUD SYNC STATUS  (sidebar bottom)
 ───────────────────────────────────────────────── */
 function CloudSyncStatus({ status, onSync }) {
+  const [showSetup, setShowSetup] = useState(false);
+  const [inputId,   setInputId]   = useState("");
+  const [binId,     setBinId]     = useState(() => localStorage.getItem("uc_bin_id") || "");
+  const [msg,       setMsg]       = useState("");
+
   const icons  = { idle:"☁", syncing:"↻", ok:"✓", err:"✕" };
-  const colors = { idle:"#333", syncing:"#f59e0b", ok:"#10b981", err:"#ef4444" };
-  const labels = { idle:"Cloud Sync", syncing:"Syncing...", ok:"Synced", err:"Sync Error" };
+  const colors = { idle:"#555", syncing:"#f59e0b", ok:"#10b981", err:"#ef4444" };
+  const labels = { idle:"Cloud Sync", syncing:"Syncing...", ok:"Synced ✓", err:"Sync Error" };
+
+  const saveBinId = (id) => {
+    const trimmed = id.trim();
+    if (!trimmed) return;
+    localStorage.setItem("uc_bin_id", trimmed);
+    setBinId(trimmed);
+    setMsg("✅ Bin ID saved! Syncing...");
+    setShowSetup(false);
+    onSync();
+  };
+
+  const copyBinId = () => {
+    if (binId) { navigator.clipboard.writeText(binId).catch(()=>{}); setMsg("📋 Copied!"); }
+  };
+
+  const btnStyle = { width:"100%", padding:"6px 8px", background:"#1a1a1a",
+    border:"1px solid #2a2a2a", borderRadius:6, fontSize:9, fontWeight:700,
+    cursor:"pointer", color:"#555", marginBottom:4, textAlign:"center" };
+
   return (
     <div style={{ padding:"10px 14px 14px", borderTop:"1px solid #1a1a1a" }}>
       <div style={{ fontSize:9, color:"#2a2a2a", lineHeight:1.8, marginBottom:8 }}>
         i5 9th · GTX 1660S · 32GB DDR3
       </div>
+
+      {/* Main sync button */}
       <button onClick={onSync} style={{
         width:"100%", padding:"7px 10px", background:"#0d0d0d",
         border:`1px solid ${colors[status]}`,
         borderRadius:7, fontSize:10, fontWeight:700, cursor:"pointer",
         color: colors[status], display:"flex", alignItems:"center",
-        justifyContent:"center", gap:6,
-        animation: status==="syncing" ? "spin 1s linear infinite" : "none",
+        justifyContent:"center", gap:6, marginBottom:4,
       }}>
-        <span style={{ fontSize:12, display:"inline-block",
+        <span style={{ fontSize:13, display:"inline-block",
           animation: status==="syncing" ? "spin .8s linear infinite" : "none" }}>
           {icons[status]}
         </span>
         {labels[status]}
       </button>
-      <div style={{ fontSize:8, color:"#2a2a2a", textAlign:"center", marginTop:5 }}>
-        Auto-syncs across all devices
-      </div>
+
+      {/* Setup / Bin ID */}
+      {!showSetup ? (
+        <button style={btnStyle} onClick={() => { setShowSetup(true); setMsg(""); }}>
+          ⚙ Setup / Bin ID
+        </button>
+      ) : (
+        <div style={{ marginTop:4 }}>
+          {/* Show current bin ID to copy to other device */}
+          {binId && (
+            <div style={{ marginBottom:6 }}>
+              <div style={{ fontSize:8, color:"#444", marginBottom:3 }}>Your Bin ID (copy to other device):</div>
+              <div style={{ background:"#0a0a0a", border:"1px solid #222", borderRadius:5,
+                padding:"5px 7px", fontSize:8, color:"#10b981", fontFamily:"monospace",
+                wordBreak:"break-all", cursor:"pointer" }} onClick={copyBinId}>
+                {binId}
+              </div>
+              <button style={{ ...btnStyle, color:"#10b981", marginTop:3 }} onClick={copyBinId}>
+                📋 Copy Bin ID
+              </button>
+            </div>
+          )}
+
+          {/* Paste bin ID from other device */}
+          <div style={{ fontSize:8, color:"#444", marginBottom:3 }}>
+            {binId ? "Or paste Bin ID from other device:" : "Paste Bin ID from other device:"}
+          </div>
+          <input
+            value={inputId}
+            onChange={e => setInputId(e.target.value)}
+            placeholder="Paste Bin ID here..."
+            style={{ width:"100%", background:"#0a0a0a", border:"1px solid #333",
+              borderRadius:5, padding:"5px 7px", fontSize:8, color:"#fff",
+              fontFamily:"monospace", marginBottom:4, boxSizing:"border-box" }}
+          />
+          <button style={{ ...btnStyle, color: inputId ? "#a3e635" : "#333" }}
+            onClick={() => saveBinId(inputId)} disabled={!inputId.trim()}>
+            ✅ Save & Sync
+          </button>
+          <button style={{ ...btnStyle, marginBottom:0, color:"#333" }}
+            onClick={() => { setShowSetup(false); setMsg(""); }}>
+            ✕ Close
+          </button>
+        </div>
+      )}
+
+      {msg && <div style={{ fontSize:9, color: msg.startsWith("✅")||msg.startsWith("📋") ? "#10b981":"#ef4444",
+        marginTop:4, fontWeight:700 }}>{msg}</div>}
+
+      {!binId && !showSetup && (
+        <div style={{ fontSize:8, color:"#ef4444", marginTop:4, textAlign:"center" }}>
+          ⚠ No Bin ID — tap Setup
+        </div>
+      )}
     </div>
   );
 }
@@ -457,7 +533,7 @@ export default function App() {
   const urgentCount = projects.filter(p => p.priority === "Urgent" && p.status !== "Delivered").length;
 
   const PAGES = {
-    dashboard:   <Dashboard projects={projects} />,
+    dashboard:   <Dashboard projects={projects} syncStatus={syncStatus} onSync={() => cloudPush(setSyncStatus)} />,
     projects:    <Projects  projects={projects} saveProjects={saveProjects} clients={clients} saveClients={saveClients} />,
     earnings:    <Earnings  projects={projects} clients={clients} />,
     consistency: <Consistency />,
@@ -540,7 +616,103 @@ export default function App() {
 /* ─────────────────────────────────────────────────
    DASHBOARD
 ───────────────────────────────────────────────── */
-function Dashboard({ projects }) {
+/* ─────────────────────────────────────────────────
+   SYNC SETUP INLINE (used inside Dashboard)
+───────────────────────────────────────────────── */
+function SyncSetupInline({ syncStatus, onSync }) {
+  const [open,    setOpen]    = useState(false);
+  const [inputId, setInputId] = useState("");
+  const [msg,     setMsg]     = useState("");
+  const binId = localStorage.getItem("uc_bin_id") || "";
+
+  const colors = { idle:"#111", syncing:"#f59e0b", ok:"#16a34a", err:"#ef4444" };
+  const labels = { idle:"Sync Now", syncing:"Syncing...", ok:"Synced ✓", err:"Retry" };
+
+  const saveBinId = () => {
+    const t = inputId.trim();
+    if (!t) return;
+    localStorage.setItem("uc_bin_id", t);
+    setMsg("✅ Saved!");
+    setOpen(false);
+    setInputId("");
+    onSync();
+  };
+
+  const copyBinId = () => {
+    navigator.clipboard.writeText(binId).catch(()=>{});
+    setMsg("📋 Bin ID copied!");
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, minWidth:120 }}>
+      {/* Main sync button */}
+      <div style={{ display:"flex", gap:6 }}>
+        <button onClick={onSync} style={{
+          padding:"8px 14px", borderRadius:8, border:`1.5px solid ${colors[syncStatus]}`,
+          background:"#fff", color:colors[syncStatus], fontWeight:800, fontSize:12, cursor:"pointer",
+        }}>
+          <span style={{ display:"inline-block", animation: syncStatus==="syncing"?"spin .8s linear infinite":"none", marginRight:4 }}>
+            {syncStatus==="syncing"?"↻":"☁"}
+          </span>
+          {labels[syncStatus]}
+        </button>
+        <button onClick={() => { setOpen(o => !o); setMsg(""); }} style={{
+          padding:"8px 10px", borderRadius:8, border:"1.5px solid #e4e4e4",
+          background:"#f9f9f9", color:"#555", fontWeight:700, fontSize:12, cursor:"pointer",
+        }}>⚙</button>
+      </div>
+
+      {/* Setup panel */}
+      {open && (
+        <div style={{ background:"#f9f9f9", border:"1.5px solid #e4e4e4", borderRadius:10,
+          padding:"14px", width:"100%", marginTop:4 }}>
+
+          {/* Show current bin ID */}
+          {binId && (
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4 }}>Your Bin ID — copy to other device:</div>
+              <div style={{ background:"#fff", border:"1px solid #e4e4e4", borderRadius:6,
+                padding:"6px 10px", fontSize:10, fontFamily:"monospace", wordBreak:"break-all",
+                color:"#16a34a", cursor:"pointer", marginBottom:6 }} onClick={copyBinId}>
+                {binId}
+              </div>
+              <button onClick={copyBinId} style={{ width:"100%", padding:"7px", borderRadius:7,
+                border:"1px solid #e4e4e4", background:"#fff", fontSize:12, fontWeight:700,
+                cursor:"pointer", color:"#16a34a", marginBottom:8 }}>
+                📋 Copy Bin ID
+              </button>
+            </div>
+          )}
+
+          {/* Paste bin ID */}
+          <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4 }}>
+            {binId ? "Paste Bin ID from other device:" : "Paste your Bin ID here:"}
+          </div>
+          <input value={inputId} onChange={e => setInputId(e.target.value)}
+            placeholder="Paste Bin ID..."
+            style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:"1px solid #e4e4e4",
+              fontSize:12, fontFamily:"monospace", marginBottom:6, boxSizing:"border-box" }} />
+          <button onClick={saveBinId} disabled={!inputId.trim()} style={{
+            width:"100%", padding:"8px", borderRadius:7, border:"none",
+            background: inputId.trim()?"#111":"#e4e4e4", color: inputId.trim()?"#fff":"#aaa",
+            fontSize:12, fontWeight:800, cursor: inputId.trim()?"pointer":"default", marginBottom:4,
+          }}>✅ Save & Sync</button>
+          <button onClick={() => { setOpen(false); setMsg(""); }} style={{
+            width:"100%", padding:"7px", borderRadius:7, border:"1px solid #e4e4e4",
+            background:"#fff", fontSize:12, fontWeight:600, cursor:"pointer", color:"#666"
+          }}>✕ Close</button>
+        </div>
+      )}
+
+      {msg && <div style={{ fontSize:11, fontWeight:700, color:"#16a34a" }}>{msg}</div>}
+      {!binId && !open && (
+        <div style={{ fontSize:10, color:"#ef4444", fontWeight:700 }}>⚠ No Bin ID — tap ⚙</div>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({ projects, syncStatus, onSync }) {
   const todayKey = () => new Date().toISOString().slice(0,10);
 
   const [now, setNow] = useState(new Date());
@@ -822,6 +994,20 @@ function Dashboard({ projects }) {
             );
           })
         }
+      </div>
+
+      {/* Cloud Sync Card — visible on all devices */}
+      <div className="card" style={{ marginTop:16, display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <div style={{ flex:1, minWidth:160 }}>
+          <div style={{ fontWeight:800, fontSize:13, marginBottom:2 }}>☁ Cloud Sync</div>
+          <div style={{ fontSize:11, color:"#a1a1aa" }}>
+            {syncStatus==="ok"     && "Synced across all devices ✓"}
+            {syncStatus==="syncing"&& "Syncing..."}
+            {syncStatus==="err"    && "Sync error — tap to retry"}
+            {syncStatus==="idle"   && "Tap to sync with other devices"}
+          </div>
+        </div>
+        <SyncSetupInline syncStatus={syncStatus} onSync={onSync} />
       </div>
 
       {/* Bottom Popup for social items */}
