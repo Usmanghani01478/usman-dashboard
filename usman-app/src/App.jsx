@@ -1165,7 +1165,7 @@ function Consistency() {
 ───────────────────────────────────────────────── */
 function Projects({ projects, saveProjects, clients, saveClients }) {
   const BLANK = {
-    id:"", client:"", title:"", rawLink:"", doneLink:"",
+    id:"", client:"", title:"", rawLink:"", doneLink:"", scriptLink:"", assetsLink:"",
     status:"Not Started", priority:"Normal", deadline:"", money:"",
     rateType:"per_video", rate:"", videoMins:"", qty:"1", completedDate:""
   };
@@ -1282,8 +1282,10 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
           {[
             { k:"client", l:"Client *", el:"datalist", ph:"Type or select..." },
             { k:"title",  l:"Video Title *", ph:"e.g. How I Made $10k" },
-            { k:"rawLink", l:"Raw File Link", ph:"Google Drive / Dropbox URL" },
-            { k:"doneLink", l:"Done File Link", ph:"Exported / delivered URL" },
+            { k:"rawLink",    l:"Raw File Link",    ph:"Google Drive / Dropbox URL" },
+            { k:"doneLink",   l:"Done File Link",   ph:"Exported / delivered URL" },
+            { k:"scriptLink", l:"Script Link",      ph:"Google Docs / Notion URL" },
+            { k:"assetsLink", l:"Other Assets",     ph:"Music, SFX, Fonts, etc." },
           ].map(({ k, l, ph, el }) => (
             <div key={k}>
               <label className="lbl">{l}</label>
@@ -1430,8 +1432,10 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
                         📅 {over ? `${Math.abs(days)}d overdue ⚠` : `${days}d left`}
                       </span>
                     )}
-                    {p.rawLink  && <a href={p.rawLink}  target="_blank" rel="noreferrer" style={{ color:"#3b82f6",  fontWeight:600 }}>📁 Raw</a>}
-                    {p.doneLink && <a href={p.doneLink} target="_blank" rel="noreferrer" style={{ color:"#16a34a", fontWeight:600 }}>✅ Done</a>}
+                    {p.rawLink    && <a href={p.rawLink}    target="_blank" rel="noreferrer" style={{ color:"#3b82f6", fontWeight:600 }}>📁 Raw</a>}
+                    {p.doneLink   && <a href={p.doneLink}   target="_blank" rel="noreferrer" style={{ color:"#16a34a", fontWeight:600 }}>✅ Done</a>}
+                    {p.scriptLink && <a href={p.scriptLink} target="_blank" rel="noreferrer" style={{ color:"#8b5cf6", fontWeight:600 }}>📝 Script</a>}
+                    {p.assetsLink && <a href={p.assetsLink} target="_blank" rel="noreferrer" style={{ color:"#f59e0b", fontWeight:600 }}>📦 Assets</a>}
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:8, flexShrink:0 }}>
