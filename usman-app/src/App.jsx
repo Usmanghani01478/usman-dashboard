@@ -898,28 +898,42 @@ function Dashboard({ projects, syncStatus, onSync }) {
    CONSISTENCY TRACKER
 ───────────────────────────────────────────────── */
 function Consistency() {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow]       = useState(new Date());
   const CY = now.getFullYear();
-  const [year, setYear] = useState(CY);
+  const [year, setYear]     = useState(CY);
   const [selMonth, setSelMonth] = useState(now.getMonth());
-  const [, forceUpdate] = useState(0);
+  const [selDay, setSelDay] = useState(null); // clicked date key
+  const [, forceUpdate]     = useState(0);
 
-  // Re-read localStorage on every render so it stays live
-  const cons = (() => { try { return JSON.parse(localStorage.getItem("uc_cons") || "{}"); } catch { return {}; } })();
-  const todayKey = now.toISOString().slice(0,10);
-
-  // Live today points from all 3 sources
-  const todayPts = calcTodayPoints(todayKey);
-  const todayTotal = todayPts.social + todayPts.yt + todayPts.namaz;
-
-  // Poll every 5 seconds so Consistency updates when you switch tabs
   useEffect(() => {
-    const t = setInterval(() => { setNow(new Date()); forceUpdate(n => n+1); }, 5000);
+    const t = setInterval(() => { setNow(new Date()); forceUpdate(n=>n+1); }, 5000);
     return () => clearInterval(t);
   }, []);
 
-  // Build month data
+  const cons = (() => { try { return JSON.parse(localStorage.getItem("uc_cons")||"{}"); } catch { return {}; } })();
+  const todayKey = now.toISOString().slice(0,10);
   const currentYear = now.getFullYear();
+
+  const todayPts   = calcTodayPoints(todayKey);
+  const todayTotal = todayPts.social + todayPts.yt + todayPts.namaz;
+
+  // Get points for any date key
+  const getPts = (key) => {
+    if (key === todayKey) return todayPts;
+    const v = cons[key];
+    if (!v) return { social:0, yt:0, namaz:0 };
+    if (typeof v === "object") return v;
+    return { social:0, yt:0, namaz:0, legacy: v };
+  };
+  const getTotal = (key) => {
+    if (key === todayKey) return todayTotal;
+    const v = cons[key];
+    if (!v) return 0;
+    if (typeof v === "object") return v.total || 0;
+    return 1; // legacy
+  };
+
+  // Build month data
   const monthData = MO.map((m, mi) => {
     let totalPts = 0;
     const daysInMonth = new Date(year, mi+1, 0).getDate();
@@ -927,119 +941,118 @@ function Consistency() {
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${year}-${String(mi+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       const isToday = key === todayKey;
-      // Only show live points for today if viewing current year
-      const pts = (isToday && year === currentYear) ? todayTotal : (cons[key]?.total || 0);
+      const pts = (isToday && year === currentYear) ? todayTotal : getTotal(key);
       totalPts += pts;
-      days.push({ d, key, pts, isToday: isToday && year === currentYear });
+      days.push({ d, key, pts, isToday });
     }
     return { m, mi, totalPts, days, daysInMonth };
   });
 
-  // Total points this year
   const totalYearPts = (() => {
-    let sum = 0;
-    const currentYear = now.getFullYear();
-    // Only include today's live points if viewing current year
-    if (year === currentYear) sum += todayTotal;
+    let sum = year === currentYear ? todayTotal : 0;
     Object.entries(cons).filter(([k]) => k.startsWith(year+"-") && k !== todayKey)
-      .forEach(([k, v]) => { sum += v?.total || 0; });
+      .forEach(([,v]) => { sum += typeof v==="object" ? (v.total||0) : 1; });
     return sum;
   })();
 
-  // Streak: consecutive days with any points
   let streak = 0;
-  const cd = new Date(now);
+  const cd2 = new Date(now);
   while (true) {
-    const k = cd.toISOString().slice(0,10);
-    const pts = k === todayKey ? todayTotal : (cons[k]?.total || 0);
-    if (pts > 0) { streak++; cd.setDate(cd.getDate()-1); }
-    else break;
+    const k = cd2.toISOString().slice(0,10);
+    if (getTotal(k) > 0) { streak++; cd2.setDate(cd2.getDate()-1); } else break;
   }
 
   const md = monthData[selMonth];
 
-  // Color per points (0-10)
   const ptColor = (pts) => {
-    if (pts === 0) return { bg:"transparent", color:"#555", border:"none" };
-    if (pts <= 2)  return { bg:"#d1fae5", color:"#065f46", border:"none" };
-    if (pts <= 5)  return { bg:"#6ee7b7", color:"#064e3b", border:"none" };
-    if (pts <= 8)  return { bg:"#34d399", color:"#022c22", border:"none" };
-    return { bg:"#111", color:"#fff", border:"none" }; // 9-10
+    if (pts === 0)  return { bg:"transparent", color:"#ccc" };
+    if (pts <= 2)   return { bg:"#d1fae5", color:"#065f46" };
+    if (pts <= 5)   return { bg:"#6ee7b7", color:"#064e3b" };
+    if (pts <= 8)   return { bg:"#34d399", color:"#022c22" };
+    return           { bg:"#111",    color:"#fff" };
   };
+
+  const selPts = selDay ? getPts(selDay) : null;
+  const selTotal = selDay ? getTotal(selDay) : 0;
 
   return (
     <div>
-      <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Consistency Tracker</div>
-      <div style={{ fontSize:13, color:"#a1a1aa", marginBottom:20 }}>Max 10 pts/day · Social 4pt · YouTube Short 5pt · Namaz 1pt</div>
+      {/* Header */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Consistency Tracker</div>
+        <div style={{ fontSize:12, color:"#a1a1aa" }}>Max 10 pts/day · Social 4pt · YouTube 5pt · Namaz 1pt</div>
+      </div>
 
-      {/* Today live breakdown */}
-      <div className="card" style={{ marginBottom:16, borderTop:"3px solid #111" }}>
-        <div style={{ fontWeight:800, fontSize:14, marginBottom:12 }}>Today's Points — Live</div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:10 }}>
+      {/* Stats row */}
+      <div className="g3" style={{ marginBottom:16 }}>
+        {[
+          { v:streak,             l:"Streak",       s:"days in a row",  a:"#f59e0b" },
+          { v:totalYearPts,       l:"Total Points", s:`in ${year}`,     a:"#111"    },
+          { v:`${todayTotal}/10`, l:"Today",        s:todayTotal===10?"Perfect!":todayTotal>0?"In progress":"Not started", a:todayTotal===10?"#16a34a":todayTotal>0?"#f59e0b":"#a1a1aa" },
+        ].map(st => (
+          <div key={st.l} className="card" style={{ borderTop:`3px solid ${st.a}`, padding:"14px 16px" }}>
+            <div style={{ fontSize:36, fontWeight:800, color:st.a, lineHeight:1 }}>{st.v}</div>
+            <div style={{ fontSize:12, fontWeight:700, marginTop:6 }}>{st.l}</div>
+            <div style={{ fontSize:10, color:"#a1a1aa", marginTop:2 }}>{st.s}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Today breakdown */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:13, marginBottom:10 }}>Today — Live</div>
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
           {[
-            { l:"📱 Social Posts", pts: todayPts.social, max:4 },
-            { l:"🎬 YouTube Short", pts: todayPts.yt,     max:5 },
-            { l:"🕌 Daily Namaz",  pts: todayPts.namaz,  max:1 },
+            { l:"📱 Social", pts:todayPts.social, max:4 },
+            { l:"🎬 YouTube", pts:todayPts.yt,    max:5 },
+            { l:"🕌 Namaz",  pts:todayPts.namaz,  max:1 },
           ].map(it => (
-            <div key={it.l} style={{ flex:"1 1 120px", background:"#f9f9f9", border:"1px solid #e8e8e8", borderRadius:10, padding:"10px 14px" }}>
-              <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4 }}>{it.l}</div>
-              <div style={{ fontWeight:800, fontSize:22, color: it.pts===it.max?"#16a34a":"#111" }}>
-                {it.pts}<span style={{ fontSize:13, color:"#a1a1aa", fontWeight:500 }}>/{it.max}</span>
+            <div key={it.l} style={{ flex:"1 1 80px", background:"#f9f9f9", borderRadius:10, padding:"10px 12px", border:"1px solid #f0f0f0" }}>
+              <div style={{ fontSize:10, color:"#a1a1aa", marginBottom:3 }}>{it.l}</div>
+              <div style={{ fontWeight:800, fontSize:20, color: it.pts===it.max?"#16a34a":"#111" }}>
+                {it.pts}<span style={{ fontSize:11, color:"#ccc", fontWeight:500 }}>/{it.max}</span>
               </div>
             </div>
           ))}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ flex:1, height:10, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
-            <div style={{ height:"100%", background: todayTotal===10?"#111":todayTotal>=7?"#34d399":todayTotal>=4?"#6ee7b7":"#a7f3d0",
-              borderRadius:99, width:`${(todayTotal/10)*100}%`, transition:"width .4s" }} />
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ flex:1, height:8, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
+            <div style={{ height:"100%", borderRadius:99, transition:"width .4s",
+              background: todayTotal===10?"#111":todayTotal>=7?"#34d399":"#6ee7b7",
+              width:`${(todayTotal/10)*100}%` }} />
           </div>
-          <div style={{ fontWeight:800, fontSize:20, minWidth:60, textAlign:"right", color: todayTotal===10?"#111":"#555" }}>
+          <div style={{ fontWeight:800, fontSize:18, color: todayTotal===10?"#16a34a":"#111", minWidth:50, textAlign:"right" }}>
             {todayTotal}/10
           </div>
         </div>
-        {todayTotal === 10 && (
-          <div style={{ marginTop:10, background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", fontSize:12, fontWeight:700, color:"#16a34a" }}>
-            MashaAllah! Perfect 10/10 today ✓
+        {todayTotal===10 && (
+          <div style={{ marginTop:8, background:"#f0fdf4", borderRadius:8, padding:"7px 12px", fontSize:12, fontWeight:700, color:"#16a34a" }}>
+            MashaAllah! Perfect day ✓
           </div>
         )}
       </div>
 
       {/* Year selector */}
-      <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
         {[CY, CY+1, CY+2].map(y => (
           <button key={y} className="btn-sm"
-            style={{ padding:"8px 18px", fontSize:13, fontWeight:700, ...(year===y?{background:"#111",color:"#fff",borderColor:"#111"}:{}) }}
-            onClick={() => setYear(y)}>{y}</button>
-        ))}
-      </div>
-
-      {/* Stats cards */}
-      <div className="g3" style={{ marginBottom:16 }}>
-        {[
-          { v:streak,        l:"Current Streak", s:"consecutive days", a:"#f59e0b" },
-          { v:totalYearPts,  l:"Total Points",   s:`in ${year}`,       a:"#111"    },
-          { v:`${todayTotal}/10`, l:"Today",     s: todayTotal===10?"Perfect!":todayTotal>0?"Keep going":"Start now", a: todayTotal===10?"#16a34a":todayTotal>0?"#f59e0b":"#ef4444" },
-        ].map(st => (
-          <div key={st.l} className="card" style={{ borderTop:`3px solid ${st.a}` }}>
-            <div style={{ fontSize:40, fontWeight:800, color:st.a, lineHeight:1 }}>{st.v}</div>
-            <div style={{ fontSize:13, fontWeight:700, marginTop:7 }}>{st.l}</div>
-            <div style={{ fontSize:11, color:"#a1a1aa", marginTop:3 }}>{st.s}</div>
-          </div>
+            style={{ padding:"7px 16px", fontSize:12, fontWeight:700,
+              ...(year===y?{background:"#111",color:"#fff",borderColor:"#111"}:{}) }}
+            onClick={() => { setYear(y); setSelDay(null); }}>{y}</button>
         ))}
       </div>
 
       {/* Month tabs */}
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+      <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
         {MO.map((m, i) => (
           <button key={m} className="btn-sm"
-            style={{ padding:"7px 12px", position:"relative",
+            style={{ padding:"6px 10px", fontSize:11, position:"relative",
               ...(selMonth===i?{background:"#111",color:"#fff",borderColor:"#111"}:
                 monthData[i].totalPts>0?{borderColor:"#111",fontWeight:700}:{color:"#a1a1aa"}) }}
-            onClick={() => setSelMonth(i)}>
+            onClick={() => { setSelMonth(i); setSelDay(null); }}>
             {m}
             {monthData[i].totalPts > 0 && selMonth!==i && (
-              <span style={{ position:"absolute", top:2, right:2, width:5, height:5, background:"#10b981", borderRadius:"50%", display:"block" }} />
+              <span style={{ position:"absolute", top:1, right:1, width:4, height:4, background:"#10b981", borderRadius:"50%", display:"block" }} />
             )}
           </button>
         ))}
@@ -1047,56 +1060,99 @@ function Consistency() {
 
       {/* Calendar */}
       <div className="card" style={{ marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <div style={{ fontWeight:800, fontSize:15 }}>{MO[selMonth]} {year}</div>
-          <div style={{ fontSize:13, fontWeight:700, color:"#111" }}>{md.totalPts} pts total</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div style={{ fontWeight:800, fontSize:14 }}>{MO[selMonth]} {year}</div>
+          <div style={{ fontSize:12, fontWeight:700, color:"#555" }}>{md.totalPts} pts</div>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:5 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
           {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
-            <div key={d} style={{ textAlign:"center", fontSize:10, color:"#a1a1aa", fontWeight:700, paddingBottom:4 }}>{d}</div>
+            <div key={d} style={{ textAlign:"center", fontSize:9, color:"#a1a1aa", fontWeight:700, paddingBottom:3 }}>{d}</div>
           ))}
           {Array(new Date(year, selMonth, 1).getDay()).fill(null).map((_,i) => <div key={"e"+i} />)}
           {md.days.map(({ d, key, pts, isToday }) => {
-            const col = ptColor(pts);
+            const col  = ptColor(pts);
+            const isSel = selDay === key;
             return (
-              <div key={d} title={`${pts}/10 pts`} style={{
-                aspectRatio:"1", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                borderRadius:8, fontSize:11, fontWeight: pts>0||isToday?800:400,
-                background: col.bg,
-                color: col.color,
-                border: isToday && pts===0 ? "2px solid #111" : col.border,
-                cursor:"default",
-              }}>
+              <div key={d} onClick={() => setSelDay(isSel ? null : key)}
+                title={`${pts}/10 pts — tap to view`}
+                style={{
+                  aspectRatio:"1", display:"flex", flexDirection:"column",
+                  alignItems:"center", justifyContent:"center",
+                  borderRadius:8, fontSize:11, fontWeight: pts>0||isToday?800:400,
+                  background: isSel?"#111":col.bg,
+                  color: isSel?"#fff":col.color,
+                  border: isToday && !isSel ? "2px solid #111" : "none",
+                  cursor:"pointer", transition:"all .15s",
+                  boxShadow: isSel?"0 0 0 2px #111":"none",
+                }}>
                 <div>{d}</div>
-                {pts > 0 && <div style={{ fontSize:8, opacity:.7, lineHeight:1 }}>{pts}pt</div>}
+                {pts > 0 && !isSel && <div style={{ fontSize:7, opacity:.6, lineHeight:1 }}>{pts}pt</div>}
+                {isSel && <div style={{ fontSize:7, lineHeight:1 }}>✓</div>}
               </div>
             );
           })}
         </div>
+
+        {/* Selected day detail */}
+        {selDay && (
+          <div style={{ marginTop:14, background:"#f9f9f9", borderRadius:10, padding:"12px 14px", border:"1px solid #e8e8e8" }}>
+            <div style={{ fontWeight:800, fontSize:13, marginBottom:8 }}>
+              {new Date(selDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
+              {selDay===todayKey && <span style={{ color:"#f59e0b", marginLeft:6, fontSize:11 }}>Today</span>}
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              {[
+                { l:"📱 Social", pts: selPts?.social??0, max:4 },
+                { l:"🎬 YouTube",pts: selPts?.yt??0,     max:5 },
+                { l:"🕌 Namaz",  pts: selPts?.namaz??0,  max:1 },
+              ].map(it => (
+                <div key={it.l} style={{ flex:1, textAlign:"center", background:"#fff",
+                  borderRadius:8, padding:"8px 6px", border:"1px solid #e8e8e8" }}>
+                  <div style={{ fontSize:10, color:"#a1a1aa", marginBottom:3 }}>{it.l}</div>
+                  <div style={{ fontWeight:800, fontSize:18, color: it.pts===it.max?"#16a34a":"#111" }}>
+                    {it.pts}<span style={{ fontSize:10, color:"#ccc" }}>/{it.max}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ flex:1, textAlign:"center", background: selTotal===10?"#111":"#fff",
+                borderRadius:8, padding:"8px 6px", border:"1px solid #e8e8e8" }}>
+                <div style={{ fontSize:10, color: selTotal===10?"#555":"#a1a1aa", marginBottom:3 }}>Total</div>
+                <div style={{ fontWeight:800, fontSize:18, color: selTotal===10?"#fff":"#111" }}>
+                  {selTotal}<span style={{ fontSize:10, color: selTotal===10?"#555":"#ccc" }}>/10</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!selDay && (
+          <div style={{ fontSize:10, color:"#a1a1aa", textAlign:"center", marginTop:10 }}>
+            Tap any date to see breakdown
+          </div>
+        )}
+
         {/* Legend */}
-        <div style={{ display:"flex", gap:10, marginTop:14, fontSize:10, color:"#a1a1aa", flexWrap:"wrap" }}>
-          {[["#d1fae5","1-2pt"],["#6ee7b7","3-5pt"],["#34d399","6-8pt"],["#111","9-10pt"]].map(([bg,l]) => (
-            <span key={l} style={{ display:"flex", alignItems:"center", gap:4 }}>
-              <span style={{ display:"inline-block", width:10, height:10, background:bg, borderRadius:3 }} />{l}
+        <div style={{ display:"flex", gap:8, marginTop:12, fontSize:10, color:"#a1a1aa", flexWrap:"wrap" }}>
+          {[["#d1fae5","1-2"],["#6ee7b7","3-5"],["#34d399","6-8"],["#111","9-10"]].map(([bg,l]) => (
+            <span key={l} style={{ display:"flex", alignItems:"center", gap:3 }}>
+              <span style={{ width:9, height:9, background:bg, borderRadius:2, display:"inline-block" }} />{l}pt
             </span>
           ))}
-          <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-            <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #111", borderRadius:3 }} />Today
-          </span>
         </div>
       </div>
 
-      {/* Monthly breakdown */}
+      {/* Monthly overview */}
       <div className="card">
-        <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>Monthly Overview {year}</div>
+        <div style={{ fontWeight:800, fontSize:13, marginBottom:12 }}>Monthly Overview {year}</div>
         {monthData.map(({ m, totalPts, daysInMonth }) => (
-          <div key={m} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:"1px solid #f4f4f5" }}>
-            <div style={{ width:32, fontSize:12, fontWeight:700, color:"#555" }}>{m}</div>
-            <div style={{ flex:1, height:8, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
-              <div style={{ height:"100%", background: totalPts>0?"#111":"transparent", borderRadius:99,
-                width:`${Math.min((totalPts/(daysInMonth*10))*100, 100)}%`, transition:"width .3s" }} />
+          <div key={m} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0", borderBottom:"1px solid #f4f4f5" }}>
+            <div style={{ width:28, fontSize:11, fontWeight:700, color:"#555" }}>{m}</div>
+            <div style={{ flex:1, height:7, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
+              <div style={{ height:"100%", background:totalPts>0?"#111":"transparent", borderRadius:99,
+                width:`${Math.min((totalPts/(daysInMonth*10))*100,100)}%`, transition:"width .3s" }} />
             </div>
-            <div style={{ width:50, textAlign:"right", fontSize:12, fontWeight:700, color: totalPts>0?"#111":"#d4d4d8" }}>{totalPts}pt</div>
+            <div style={{ width:44, textAlign:"right", fontSize:11, fontWeight:700,
+              color:totalPts>0?"#111":"#d4d4d8" }}>{totalPts}pt</div>
           </div>
         ))}
       </div>
