@@ -445,6 +445,8 @@ export default function App() {
     { id:"messages",     icon:"◻", label:"Messages"     },
     { id:"converter",    icon:"⊛", label:"USD / PKR"    },
     { id:"muslim",        icon:"☽", label:"Muslim Daily"  },
+    { id:"notes",          icon:"✎", label:"Notes"          },
+    { id:"clientinfo",     icon:"◉", label:"Client Info"    },
   ];
 
   const urgentCount = projects.filter(p => p.priority === "Urgent" && p.status !== "Delivered").length;
@@ -458,6 +460,8 @@ export default function App() {
     messages:    <Messages />,
     converter:   <Converter />,
     muslim:      <MuslimDaily />,
+    notes:       <Notes />,
+    clientinfo:  <ClientInfo />,
   };
 
   return (
@@ -1409,18 +1413,24 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
           const borderColor = p.priority === "Urgent" ? "#ef4444" : p.priority === "High" ? "#f97316" : isDone ? "#10b981" : "#e8e8e8";
 
           return (
-            <div key={p.id} className="card" style={{ marginBottom:10, borderLeft:`4px solid ${borderColor}` }}>
+            <div key={p.id} className="card" style={{ marginBottom:10, borderLeft:`4px solid ${borderColor}`, opacity: isDone ? 0.55 : 1, transition:"opacity .2s" }}>
+              {/* Urgent banner */}
+              {p.priority === "Urgent" && !isDone && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:7, padding:"5px 10px", marginBottom:8, fontSize:11, fontWeight:800, color:"#ef4444" }}>
+                  ⚠ URGENT
+                </div>
+              )}
               <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:7 }}>
-                    <span style={{ fontWeight:800, fontSize:14 }}>{p.title}</span>
+                    <span style={{ fontWeight:800, fontSize:14, textDecoration: isDone?"line-through":"none", color: isDone?"#a1a1aa":"#111" }}>{p.title}</span>
                     <Tag bg={SS[p.status]?.bg || "#f3f4f6"} c={SS[p.status]?.c || "#666"}>{p.status}</Tag>
                     <Tag bg={PS[p.priority]?.bg || "#f9fafb"} c={PS[p.priority]?.c || "#aaa"}>{p.priority}</Tag>
                     {isDone && <Tag bg="#f0fdf4" c="#16a34a">✓ In Earnings</Tag>}
                   </div>
                   <div style={{ display:"flex", gap:12, fontSize:12, color:"#71717a", flexWrap:"wrap", alignItems:"center" }}>
                     <span>👤 <strong style={{ color:"#444" }}>{p.client}</strong></span>
-                    {earn > 0 && <span style={{ fontWeight:800, color:"#111" }}>💵 ${earn.toFixed(2)}</span>}
+                    {earn > 0 && (p.rate || parseFloat(p.money)>0) && <span style={{ fontWeight:800, color:"#111" }}>💵 ${earn.toFixed(2)}</span>}
                     {p.rateType && p.rate && (
                       <span style={{ color:"#a1a1aa" }}>
                         {p.rateType === "per_min" ? `$${p.rate}/min · ${p.videoMins || "?"}min × ${p.qty || 1}` : `$${p.rate}/vid × ${p.qty || 1}`}
@@ -2199,6 +2209,212 @@ function MuslimDaily() {
           }}>Reset</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────
+   NOTES
+───────────────────────────────────────────────── */
+function Notes() {
+  const [notes, setNotes] = useState(() => load("uc_notes", []));
+  const [text,  setText]  = useState("");
+  const [title, setTitle] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [search, setSearch]   = useState("");
+
+  const saveNotes = d => { setNotes(d); save("uc_notes", d); if(window.__cloudPush) window.__cloudPush(); };
+
+  const submit = () => {
+    if (!text.trim()) return;
+    const item = { id: editing || Date.now().toString(), title: title.trim() || "Untitled", text: text.trim(), date: new Date().toISOString().slice(0,10) };
+    saveNotes(editing ? notes.map(n => n.id===editing ? item : n) : [item, ...notes]);
+    setText(""); setTitle(""); setEditing(null);
+  };
+
+  const filtered = notes.filter(n =>
+    n.title.toLowerCase().includes(search.toLowerCase()) ||
+    n.text.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Notes</div>
+      <div style={{ fontSize:13, color:"#a1a1aa", marginBottom:20 }}>Jot down anything — ideas, tasks, reminders</div>
+
+      {/* Add / Edit form */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:13, marginBottom:12 }}>{editing ? "✏ Edit Note" : "+ New Note"}</div>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title (optional)"
+          style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+            fontSize:13, fontWeight:600, marginBottom:8, boxSizing:"border-box" }} />
+        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Write your note here..."
+          rows={4} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+            fontSize:13, resize:"vertical", marginBottom:10, boxSizing:"border-box", fontFamily:"inherit" }} />
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={submit} style={{ padding:"9px 20px", borderRadius:8, border:"none",
+            background: text.trim()?"#111":"#e4e4e4", color: text.trim()?"#fff":"#aaa",
+            fontWeight:800, fontSize:13, cursor: text.trim()?"pointer":"default" }}>
+            {editing ? "Save Changes" : "Add Note"}
+          </button>
+          {editing && (
+            <button onClick={() => { setEditing(null); setText(""); setTitle(""); }}
+              className="btn-ghost" style={{ fontSize:13, padding:"9px 16px" }}>Cancel</button>
+          )}
+        </div>
+      </div>
+
+      {/* Search */}
+      {notes.length > 2 && (
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search notes..."
+          style={{ width:"100%", padding:"9px 14px", borderRadius:9, border:"1.5px solid #e4e4e4",
+            fontSize:13, marginBottom:14, boxSizing:"border-box" }} />
+      )}
+
+      {/* Notes list */}
+      {filtered.length === 0
+        ? <div className="card" style={{ textAlign:"center", color:"#d4d4d8", padding:40 }}>
+            {notes.length===0 ? "No notes yet — add one above!" : "No results found."}
+          </div>
+        : filtered.map(n => (
+          <div key={n.id} className="card" style={{ marginBottom:10, borderLeft:"3px solid #e4e4e4" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:4 }}>{n.title}</div>
+                <div style={{ fontSize:13, color:"#555", whiteSpace:"pre-wrap", lineHeight:1.6, marginBottom:6 }}>{n.text}</div>
+                <div style={{ fontSize:10, color:"#a1a1aa" }}>{n.date}</div>
+              </div>
+              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                <button className="btn-ghost" style={{ fontSize:11, padding:"6px 12px" }}
+                  onClick={() => { setEditing(n.id); setTitle(n.title==="Untitled"?"":n.title); setText(n.text); }}>
+                  ✏
+                </button>
+                <button className="btn-danger" style={{ fontSize:11, padding:"6px 10px" }}
+                  onClick={() => saveNotes(notes.filter(x=>x.id!==n.id))}>
+                  🗑
+                </button>
+              </div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────
+   CLIENT INFO
+───────────────────────────────────────────────── */
+function ClientInfo() {
+  const BLANK = { id:"", name:"", title:"", link:"", note:"" };
+  const [items,   setItems]   = useState(() => load("uc_cinfo", []));
+  const [form,    setForm]    = useState({ ...BLANK });
+  const [editing, setEditing] = useState(null);
+  const [search,  setSearch]  = useState("");
+  const F = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const saveItems = d => { setItems(d); save("uc_cinfo", d); if(window.__cloudPush) window.__cloudPush(); };
+
+  const submit = () => {
+    if (!form.name.trim()) return;
+    const item = { ...form, id: editing || Date.now().toString() };
+    saveItems(editing ? items.map(x=>x.id===editing?item:x) : [item,...items]);
+    setForm({...BLANK}); setEditing(null);
+  };
+
+  const filtered = items.filter(x =>
+    x.name.toLowerCase().includes(search.toLowerCase()) ||
+    (x.title||"").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Client Info</div>
+      <div style={{ fontSize:13, color:"#a1a1aa", marginBottom:20 }}>Save client details, links, and important notes</div>
+
+      {/* Form */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:13, marginBottom:12 }}>{editing?"✏ Edit Client":"+ Add Client"}</div>
+        <div className="g2" style={{ marginBottom:8 }}>
+          <div>
+            <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4, fontWeight:600 }}>Client Name *</div>
+            <input value={form.name} onChange={e=>F("name",e.target.value)} placeholder="e.g. Jon Mac"
+              style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+                fontSize:13, fontWeight:600, boxSizing:"border-box" }} />
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4, fontWeight:600 }}>Title / Label</div>
+            <input value={form.title} onChange={e=>F("title",e.target.value)} placeholder="e.g. Brand Kit, Channel Guide"
+              style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+                fontSize:13, boxSizing:"border-box" }} />
+          </div>
+        </div>
+        <div style={{ marginBottom:8 }}>
+          <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4, fontWeight:600 }}>Link (Google Drive, Notion, etc.)</div>
+          <input value={form.link} onChange={e=>F("link",e.target.value)} placeholder="https://..."
+            style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+              fontSize:13, fontFamily:"monospace", boxSizing:"border-box" }} />
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:4, fontWeight:600 }}>Notes</div>
+          <textarea value={form.note} onChange={e=>F("note",e.target.value)} placeholder="Rates, preferences, passwords, anything..."
+            rows={3} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #e4e4e4",
+              fontSize:13, resize:"vertical", boxSizing:"border-box", fontFamily:"inherit" }} />
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={submit} style={{ padding:"9px 20px", borderRadius:8, border:"none",
+            background: form.name.trim()?"#111":"#e4e4e4", color: form.name.trim()?"#fff":"#aaa",
+            fontWeight:800, fontSize:13, cursor: form.name.trim()?"pointer":"default" }}>
+            {editing?"Save Changes":"Add Client"}
+          </button>
+          {editing && (
+            <button onClick={()=>{setEditing(null);setForm({...BLANK});}} className="btn-ghost"
+              style={{ fontSize:13, padding:"9px 16px" }}>Cancel</button>
+          )}
+        </div>
+      </div>
+
+      {/* Search */}
+      {items.length > 2 && (
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search clients..."
+          style={{ width:"100%", padding:"9px 14px", borderRadius:9, border:"1.5px solid #e4e4e4",
+            fontSize:13, marginBottom:14, boxSizing:"border-box" }} />
+      )}
+
+      {/* List */}
+      {filtered.length === 0
+        ? <div className="card" style={{ textAlign:"center", color:"#d4d4d8", padding:40 }}>
+            {items.length===0 ? "No clients yet — add one above!" : "No results."}
+          </div>
+        : filtered.map(x => (
+          <div key={x.id} className="card" style={{ marginBottom:10, borderLeft:"3px solid #111" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:800, fontSize:15, marginBottom:2 }}>{x.name}</div>
+                {x.title && <div style={{ fontSize:12, color:"#555", fontWeight:600, marginBottom:6 }}>{x.title}</div>}
+                {x.link && (
+                  <a href={x.link} target="_blank" rel="noreferrer" style={{ fontSize:12, color:"#3b82f6",
+                    fontWeight:600, display:"inline-flex", alignItems:"center", gap:4, marginBottom:6,
+                    wordBreak:"break-all" }}>
+                    🔗 Open Link
+                  </a>
+                )}
+                {x.note && (
+                  <div style={{ fontSize:12, color:"#71717a", whiteSpace:"pre-wrap",
+                    background:"#f9f9f9", borderRadius:8, padding:"8px 12px",
+                    marginTop:4, lineHeight:1.6 }}>{x.note}</div>
+                )}
+              </div>
+              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                <button className="btn-ghost" style={{ fontSize:11, padding:"6px 12px" }}
+                  onClick={()=>{setEditing(x.id);setForm({...x});}}>✏</button>
+                <button className="btn-danger" style={{ fontSize:11, padding:"6px 10px" }}
+                  onClick={()=>saveItems(items.filter(i=>i.id!==x.id))}>🗑</button>
+              </div>
+            </div>
+          </div>
+        ))
+      }
     </div>
   );
 }
