@@ -441,8 +441,7 @@ export default function App() {
     { id:"projects",     icon:"◧", label:"Projects"     },
     { id:"earnings",     icon:"◎", label:"Earnings"     },
     { id:"consistency",  icon:"◈", label:"Consistency" },
-    { id:"outreach",     icon:"✉", label:"Outreach"     },
-    { id:"messages",     icon:"◻", label:"Messages"     },
+
     { id:"converter",    icon:"⊛", label:"USD / PKR"    },
     { id:"muslim",        icon:"☽", label:"Muslim Daily"  },
     { id:"notes",          icon:"✎", label:"Notes"          },
@@ -456,8 +455,7 @@ export default function App() {
     projects:    <Projects  projects={projects} saveProjects={saveProjects} clients={clients} saveClients={saveClients} />,
     earnings:    <Earnings  projects={projects} clients={clients} />,
     consistency: <Consistency />,
-    outreach:    <Outreach  clients={clients} />,
-    messages:    <Messages />,
+
     converter:   <Converter />,
     muslim:      <MuslimDaily />,
     notes:       <Notes />,
@@ -1414,10 +1412,25 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
 
           return (
             <div key={p.id} className="card" style={{ marginBottom:10, borderLeft:`4px solid ${borderColor}`, opacity: isDone ? 0.55 : 1, transition:"opacity .2s" }}>
-              {/* Urgent banner */}
-              {p.priority === "Urgent" && !isDone && (
-                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:7, padding:"5px 10px", marginBottom:8, fontSize:11, fontWeight:800, color:"#ef4444" }}>
-                  ⚠ URGENT
+              {/* Priority banner */}
+              {!isDone && p.priority === "Urgent" && (
+                <div style={{ display:"inline-block", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:800, color:"#ef4444", letterSpacing:.5 }}>
+                  ● URGENT
+                </div>
+              )}
+              {!isDone && p.priority === "High" && (
+                <div style={{ display:"inline-block", background:"#fff7ed", border:"1px solid #fed7aa", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:800, color:"#ea580c", letterSpacing:.5 }}>
+                  ● HIGH
+                </div>
+              )}
+              {!isDone && p.priority === "Normal" && (
+                <div style={{ display:"inline-block", background:"#f9fafb", border:"1px solid #e4e4e4", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:600, color:"#71717a", letterSpacing:.5 }}>
+                  NORMAL
+                </div>
+              )}
+              {!isDone && p.priority === "Low" && (
+                <div style={{ display:"inline-block", background:"#fefce8", border:"1px solid #fde68a", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:700, color:"#ca8a04", letterSpacing:.5 }}>
+                  ● LOW
                 </div>
               )}
               <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
