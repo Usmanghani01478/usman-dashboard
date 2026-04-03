@@ -27,6 +27,7 @@ const STYLES = `
   button:hover { opacity: .82; }
   button:active { transform: scale(.97); }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @media(max-width:900px){ .proj-grid-wrap{ grid-template-columns:1fr !important; } }
 
   /* ── Shell ── */
   .shell {
@@ -1171,311 +1172,332 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
     status:"Not Started", priority:"Normal", deadline:"", money:"",
     rateType:"per_video", rate:"", videoMins:"", qty:"1", completedDate:""
   };
-  const [form, setForm]     = useState({ ...BLANK });
-  const [editing, setEditing] = useState(null);
-  const [fCl, setFCl]       = useState("All");
-  const [fSt, setFSt]       = useState("All");
-  const [newCl, setNewCl]   = useState("");
-  const [showMgr, setShowMgr] = useState(false);
-  const [renamingCl, setRenamingCl] = useState(null); // client name being renamed
-  const [renameVal, setRenameVal]   = useState("");
-  const topRef = useRef(null);
+  const [form,       setForm]      = useState({ ...BLANK });
+  const [editing,    setEditing]   = useState(null);
+  const [fCl,        setFCl]       = useState("All");
+  const [fSt,        setFSt]       = useState("All");
+  const [newCl,      setNewCl]     = useState("");
+  const [showMgr,    setShowMgr]   = useState(false);
+  const [renamingCl, setRenamingCl] = useState(null);
+  const [renameVal,  setRenameVal]  = useState("");
+  const formRef = useRef(null);
   const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const calcMoney = f => {
-    const r = parseFloat(f.rate) || 0, q = parseFloat(f.qty) || 1, m = parseFloat(f.videoMins) || 0;
-    return f.rateType === "per_min" ? +(r * m * q).toFixed(2) : +(r * q).toFixed(2);
+    const r = parseFloat(f.rate)||0, q = parseFloat(f.qty)||1, m = parseFloat(f.videoMins)||0;
+    return f.rateType === "per_min" ? +(r*m*q).toFixed(2) : +(r*q).toFixed(2);
   };
 
   const submit = () => {
     if (!form.title.trim() || !form.client.trim()) return;
-    const id   = editing || Date.now().toString();
-    const isDone  = form.status === "Done" || form.status === "Delivered";
-    const prev    = editing ? projects.find(p => p.id === editing) : null;
+    const id     = editing || Date.now().toString();
+    const isDone = form.status === "Done" || form.status === "Delivered";
+    const prev   = editing ? projects.find(p => p.id === editing) : null;
     const wasDone = prev && (prev.status === "Done" || prev.status === "Delivered");
     let cd = form.completedDate;
-    if (isDone && !wasDone && !cd) cd = new Date().toISOString().slice(0, 10);
+    if (isDone && !wasDone && !cd) cd = new Date().toISOString().slice(0,10);
     if (!isDone) cd = "";
-    const final = { ...form, id, completedDate: cd, money: form.rate ? calcMoney(form).toString() : form.money };
-    saveProjects(editing ? projects.map(p => p.id === editing ? final : p) : [...projects, final]);
-    setForm({ ...BLANK });
-    setEditing(null);
+    const final = { ...form, id, completedDate:cd, money: form.rate ? calcMoney(form).toString() : form.money };
+    saveProjects(editing ? projects.map(p => p.id===editing?final:p) : [...projects, final]);
+    setForm({ ...BLANK }); setEditing(null);
   };
 
+  // Sort: active first (by priority), done/delivered at bottom
+  const PRIORITY_ORDER = { Urgent:0, High:1, Normal:2, Low:3 };
   const filtered = projects
-    .filter(p => (fCl === "All" || p.client === fCl) && (fSt === "All" || p.status === fSt))
-    .slice().reverse();
+    .filter(p => (fCl==="All"||p.client===fCl) && (fSt==="All"||p.status===fSt))
+    .slice()
+    .sort((a,b) => {
+      const aDone = a.status==="Done"||a.status==="Delivered";
+      const bDone = b.status==="Done"||b.status==="Delivered";
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      return (PRIORITY_ORDER[a.priority]??2) - (PRIORITY_ORDER[b.priority]??2);
+    });
 
   const preview = form.rate ? calcMoney(form) : null;
+  const activeCt = filtered.filter(p=>p.status!=="Done"&&p.status!=="Delivered").length;
+  const doneCt   = filtered.filter(p=>p.status==="Done"||p.status==="Delivered").length;
 
-  return (
-    <div>
-      <div ref={topRef} />
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22, flexWrap:"wrap", gap:10 }}>
-        <div style={{ fontSize:24, fontWeight:800, letterSpacing:-0.5, color:"#111" }}>
-          {editing ? "✏️ Edit Project" : "New Project"}
+  const formPanel = (
+    <div ref={formRef} className="card" style={{ position:"sticky", top:16 }}>
+      <div style={{ fontWeight:800, fontSize:15, marginBottom:14, color:"#111" }}>
+        {editing ? "✏ Edit Project" : "+ New Project"}
+      </div>
+
+      {/* Client */}
+      <div style={{ marginBottom:10 }}>
+        <label className="lbl">Client *</label>
+        <input className="inp" placeholder="Type or select..." value={form.client}
+          onChange={e=>F("client",e.target.value)} list="cl-list" />
+        <datalist id="cl-list">{clients.map(c=><option key={c} value={c}/>)}</datalist>
+      </div>
+
+      {/* Title */}
+      <div style={{ marginBottom:10 }}>
+        <label className="lbl">Video Title *</label>
+        <input className="inp" placeholder="e.g. How I Made $10k" value={form.title} onChange={e=>F("title",e.target.value)} />
+      </div>
+
+      {/* Links 2-col */}
+      <div className="g2" style={{ marginBottom:10 }}>
+        <div>
+          <label className="lbl">Raw File Link</label>
+          <input className="inp" placeholder="Drive / Dropbox URL" value={form.rawLink} onChange={e=>F("rawLink",e.target.value)} />
         </div>
-        <button className="btn-ghost" style={{ fontSize:12 }} onClick={() => setShowMgr(!showMgr)}>
-          {showMgr ? "✕ Close" : "⚙ Manage Clients"}
+        <div>
+          <label className="lbl">Done File Link</label>
+          <input className="inp" placeholder="Exported URL" value={form.doneLink} onChange={e=>F("doneLink",e.target.value)} />
+        </div>
+        <div>
+          <label className="lbl">Script Link</label>
+          <input className="inp" placeholder="Google Docs / Notion" value={form.scriptLink} onChange={e=>F("scriptLink",e.target.value)} />
+        </div>
+        <div>
+          <label className="lbl">Other Assets</label>
+          <input className="inp" placeholder="Music, SFX, Fonts..." value={form.assetsLink} onChange={e=>F("assetsLink",e.target.value)} />
+        </div>
+      </div>
+
+      {/* Status / Priority / Deadline */}
+      <div className="g2" style={{ marginBottom:10 }}>
+        <div>
+          <label className="lbl">Status</label>
+          <select className="inp" value={form.status} onChange={e=>F("status",e.target.value)}>
+            {SL.map(s=><option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="lbl">Priority</label>
+          <select className="inp" value={form.priority} onChange={e=>F("priority",e.target.value)}>
+            {PL.map(p=><option key={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <label className="lbl">Deadline</label>
+        <input type="date" className="inp" value={form.deadline} onChange={e=>F("deadline",e.target.value)} />
+      </div>
+
+      {/* Payment */}
+      <div style={{ borderTop:"1px solid #f4f4f5", paddingTop:12, marginBottom:12 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:10 }}>
+          💰 Payment — auto-syncs to Earnings
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-end" }}>
+          <div style={{ flex:"1 1 130px" }}>
+            <label className="lbl">Rate Type</label>
+            <select className="inp" value={form.rateType} onChange={e=>F("rateType",e.target.value)}>
+              <option value="per_video">Per Video</option>
+              <option value="per_min">Per Minute</option>
+            </select>
+          </div>
+          <div style={{ flex:"1 1 80px" }}>
+            <label className="lbl">{form.rateType==="per_min"?"$/min":"$/video"}</label>
+            <input type="number" className="inp" min={0} placeholder={form.rateType==="per_min"?"10":"100"}
+              value={form.rate} onChange={e=>F("rate",e.target.value)} />
+          </div>
+          {form.rateType==="per_min" && (
+            <div style={{ flex:"1 1 80px" }}>
+              <label className="lbl">Length (min)</label>
+              <input type="number" className="inp" min={0} placeholder="12"
+                value={form.videoMins} onChange={e=>F("videoMins",e.target.value)} />
+            </div>
+          )}
+          <div style={{ flex:"1 1 70px" }}>
+            <label className="lbl">No. Videos</label>
+            <input type="number" className="inp" min={1} placeholder="1"
+              value={form.qty} onChange={e=>F("qty",e.target.value)} />
+          </div>
+        </div>
+        {preview !== null && (
+          <div style={{ marginTop:8, background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"8px 12px", display:"inline-block" }}>
+            <div style={{ fontSize:9, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:1 }}>Total</div>
+            <div style={{ fontWeight:800, fontSize:20, color:"#16a34a" }}>${preview}</div>
+          </div>
+        )}
+        {(form.status==="Done"||form.status==="Delivered") && (
+          <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span style={{ fontSize:11, fontWeight:700, color:"#16a34a" }}>✓ Will appear in Earnings</span>
+            <input type="date" className="inp" style={{ maxWidth:160, fontSize:12, padding:"6px 10px" }}
+              value={form.completedDate} onChange={e=>F("completedDate",e.target.value)} />
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:"flex", gap:8 }}>
+        <button className="btn-primary" onClick={submit}>{editing?"✓ Update":"+ Add Project"}</button>
+        {editing && (
+          <button className="btn-ghost" onClick={()=>{setForm({...BLANK});setEditing(null);}}>Cancel</button>
+        )}
+      </div>
+    </div>
+  );
+
+  const projectList = (
+    <div>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+        <div>
+          <div style={{ fontWeight:800, fontSize:18, color:"#111" }}>Projects</div>
+          <div style={{ fontSize:11, color:"#a1a1aa", marginTop:2 }}>
+            {activeCt} active · {doneCt} done
+          </div>
+        </div>
+        <button className="btn-ghost" style={{ fontSize:12 }} onClick={()=>setShowMgr(!showMgr)}>
+          {showMgr?"✕ Close":"⚙ Manage Clients"}
         </button>
       </div>
 
       {/* Client Manager */}
       {showMgr && (
-        <div className="card" style={{ marginBottom:18, background:"#fafafa", border:"1.5px dashed #e0e0e0" }}>
-          <div style={{ fontWeight:800, fontSize:14, marginBottom:12 }}>Client Manager</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+        <div className="card" style={{ marginBottom:14, background:"#fafafa", border:"1.5px dashed #e0e0e0" }}>
+          <div style={{ fontWeight:800, fontSize:13, marginBottom:10 }}>Client Manager</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:12 }}>
             {clients.map(c => (
-              <div key={c} style={{ display:"flex", alignItems:"center", gap:8, background:"#fff", border:"1px solid #e4e4e4", borderRadius:8, padding:"8px 12px" }}>
-                {renamingCl === c ? (
+              <div key={c} style={{ display:"flex", alignItems:"center", gap:8, background:"#fff", border:"1px solid #e4e4e4", borderRadius:8, padding:"7px 10px" }}>
+                {renamingCl===c ? (
                   <>
-                    <input className="inp" style={{ flex:1, padding:"5px 9px", fontSize:13 }} value={renameVal}
-                      onChange={e => setRenameVal(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          const n = renameVal.trim();
-                          if (n && n !== c && !clients.includes(n)) {
-                            saveClients(clients.map(x => x===c?n:x));
-                            saveProjects(projects.map(p => p.client===c?{...p,client:n}:p));
-                          }
-                          setRenamingCl(null);
-                        }
-                        if (e.key === "Escape") setRenamingCl(null);
-                      }}
-                      autoFocus
-                    />
-                    <button onClick={() => {
-                      const n = renameVal.trim();
-                      if (n && n!==c && !clients.includes(n)) {
-                        saveClients(clients.map(x => x===c?n:x));
-                        saveProjects(projects.map(p => p.client===c?{...p,client:n}:p));
-                      }
-                      setRenamingCl(null);
-                    }} style={{ padding:"5px 10px", background:"#111", color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer" }}>✓ Save</button>
-                    <button onClick={() => setRenamingCl(null)} style={{ padding:"5px 10px", background:"#f4f4f5", color:"#555", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer" }}>✕</button>
+                    <input className="inp" style={{ flex:1, padding:"4px 8px", fontSize:12 }} value={renameVal}
+                      onChange={e=>setRenameVal(e.target.value)}
+                      onKeyDown={e=>{
+                        if(e.key==="Enter"){const n=renameVal.trim();if(n&&n!==c&&!clients.includes(n)){saveClients(clients.map(x=>x===c?n:x));saveProjects(projects.map(p=>p.client===c?{...p,client:n}:p));}setRenamingCl(null);}
+                        if(e.key==="Escape")setRenamingCl(null);
+                      }} autoFocus />
+                    <button onClick={()=>{const n=renameVal.trim();if(n&&n!==c&&!clients.includes(n)){saveClients(clients.map(x=>x===c?n:x));saveProjects(projects.map(p=>p.client===c?{...p,client:n}:p));}setRenamingCl(null);}}
+                      style={{padding:"4px 9px",background:"#111",color:"#fff",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>✓</button>
+                    <button onClick={()=>setRenamingCl(null)}
+                      style={{padding:"4px 9px",background:"#f4f4f5",color:"#555",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>✕</button>
                   </>
-                ) : (
+                ):(
                   <>
-                    <span style={{ fontSize:13, fontWeight:600, flex:1 }}>{c}</span>
-                    <button onClick={() => { setRenamingCl(c); setRenameVal(c); }}
-                      style={{ padding:"4px 10px", background:"#f4f4f5", color:"#555", border:"1px solid #e4e4e4", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer" }}>✏ Rename</button>
-                    {!["Jon Mac","Shrey","Tyler","Danny Rio"].includes(c) && (
-                      <button onClick={() => saveClients(clients.filter(x => x!==c))}
-                        style={{ padding:"4px 10px", background:"#fff1f2", color:"#be123c", border:"1px solid #fecdd3", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer" }}>🗑 Delete</button>
+                    <span style={{fontSize:13,fontWeight:600,flex:1}}>{c}</span>
+                    <button onClick={()=>{setRenamingCl(c);setRenameVal(c);}}
+                      style={{padding:"3px 9px",background:"#f4f4f5",color:"#555",border:"1px solid #e4e4e4",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>✏ Rename</button>
+                    {!["Jon Mac","Shrey","Tyler","Danny Rio"].includes(c)&&(
+                      <button onClick={()=>saveClients(clients.filter(x=>x!==c))}
+                        style={{padding:"3px 9px",background:"#fff1f2",color:"#be123c",border:"1px solid #fecdd3",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>🗑</button>
                     )}
                   </>
                 )}
               </div>
             ))}
           </div>
-          <div style={{ display:"flex", gap:10 }}>
-            <input className="inp" style={{ maxWidth:260 }} placeholder="New client name..." value={newCl}
-              onChange={e => setNewCl(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { const n = newCl.trim(); if (n && !clients.includes(n)) { saveClients([...clients, n]); setNewCl(""); } } }}
-            />
-            <button className="btn-primary" onClick={() => { const n = newCl.trim(); if (n && !clients.includes(n)) { saveClients([...clients, n]); setNewCl(""); } }}>+ Add</button>
+          <div style={{display:"flex",gap:8}}>
+            <input className="inp" style={{maxWidth:220}} placeholder="New client name..." value={newCl}
+              onChange={e=>setNewCl(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"){const n=newCl.trim();if(n&&!clients.includes(n)){saveClients([...clients,n]);setNewCl("");}}}} />
+            <button className="btn-primary" onClick={()=>{const n=newCl.trim();if(n&&!clients.includes(n)){saveClients([...clients,n]);setNewCl("");}}}>+ Add</button>
           </div>
         </div>
       )}
 
-      {/* Form */}
-      <div className="card" style={{ marginBottom:22 }}>
-        <div className="g2" style={{ marginBottom:14 }}>
-          {[
-            { k:"client", l:"Client *", el:"datalist", ph:"Type or select..." },
-            { k:"title",  l:"Video Title *", ph:"e.g. How I Made $10k" },
-            { k:"rawLink",    l:"Raw File Link",    ph:"Google Drive / Dropbox URL" },
-            { k:"doneLink",   l:"Done File Link",   ph:"Exported / delivered URL" },
-            { k:"scriptLink", l:"Script Link",      ph:"Google Docs / Notion URL" },
-            { k:"assetsLink", l:"Other Assets",     ph:"Music, SFX, Fonts, etc." },
-          ].map(({ k, l, ph, el }) => (
-            <div key={k}>
-              <label className="lbl">{l}</label>
-              <input className="inp" placeholder={ph} value={form[k]}
-                onChange={e => F(k, e.target.value)}
-                list={el === "datalist" ? "cl-list" : undefined}
-              />
-              {el === "datalist" && <datalist id="cl-list">{clients.map(c => <option key={c} value={c} />)}</datalist>}
-            </div>
-          ))}
-
-          <div>
-            <label className="lbl">Status</label>
-            <select className="inp" value={form.status} onChange={e => F("status", e.target.value)}>
-              {SL.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="lbl">Priority</label>
-            <select className="inp" value={form.priority} onChange={e => F("priority", e.target.value)}>
-              {PL.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="lbl">Deadline</label>
-            <input type="date" className="inp" value={form.deadline} onChange={e => F("deadline", e.target.value)} />
-          </div>
-        </div>
-
-        {/* Payment */}
-        <div style={{ borderTop:"1px solid #f4f4f5", paddingTop:14, marginBottom:14 }}>
-          <div style={{ fontSize:10, fontWeight:700, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:12 }}>
-            💰 Payment Details — auto-syncs to Earnings
-          </div>
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
-            <div style={{ minWidth:150 }}>
-              <label className="lbl">Rate Type</label>
-              <select className="inp" value={form.rateType} onChange={e => F("rateType", e.target.value)}>
-                <option value="per_video">Per Video (fixed)</option>
-                <option value="per_min">Per Minute</option>
-              </select>
-            </div>
-            <div style={{ minWidth:90 }}>
-              <label className="lbl">{form.rateType === "per_min" ? "$/min" : "$/video"}</label>
-              <input type="number" className="inp" min={0} placeholder={form.rateType === "per_min" ? "10" : "100"}
-                value={form.rate} onChange={e => F("rate", e.target.value)} />
-            </div>
-            {form.rateType === "per_min" && (
-              <div style={{ minWidth:90 }}>
-                <label className="lbl">Length (min)</label>
-                <input type="number" className="inp" min={0} placeholder="12"
-                  value={form.videoMins} onChange={e => F("videoMins", e.target.value)} />
-              </div>
-            )}
-            <div style={{ minWidth:80 }}>
-              <label className="lbl">No. Videos</label>
-              <input type="number" className="inp" min={1} placeholder="1"
-                value={form.qty} onChange={e => F("qty", e.target.value)} />
-            </div>
-            {preview !== null && (
-              <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"9px 14px" }}>
-                <div style={{ fontSize:9, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:1 }}>Total</div>
-                <div style={{ fontWeight:800, fontSize:20, color:"#16a34a" }}>${preview}</div>
-              </div>
-            )}
-          </div>
-
-          {(form.status === "Done" || form.status === "Delivered") && (
-            <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-              <span style={{ fontSize:11, fontWeight:700, color:"#16a34a" }}>✓ Will auto-appear in Earnings</span>
-              <input type="date" className="inp" style={{ maxWidth:170, fontSize:12, padding:"6px 10px" }}
-                value={form.completedDate} onChange={e => F("completedDate", e.target.value)} />
-              <span style={{ fontSize:11, color:"#a1a1aa" }}>completion date</span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <button className="btn-primary" onClick={submit}>{editing ? "✓ Update" : "+ Add Project"}</button>
-          {editing && (
-            <button className="btn-ghost" onClick={() => { setForm({ ...BLANK }); setEditing(null); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Filters */}
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12, alignItems:"center" }}>
-        <span style={{ fontSize:10, color:"#a1a1aa", fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>Client:</span>
-        {["All", ...clients].map(c => (
-          <button key={c} className="btn-sm"
-            style={fCl === c ? { background:"#111", color:"#fff", borderColor:"#111" } : {}}
-            onClick={() => setFCl(c)}>{c}</button>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
+        <span style={{fontSize:10,color:"#a1a1aa",fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Client:</span>
+        {["All",...clients].map(c=>(
+          <button key={c} className="btn-sm" style={fCl===c?{background:"#111",color:"#fff",borderColor:"#111"}:{}} onClick={()=>setFCl(c)}>{c}</button>
         ))}
-        <div style={{ width:1, height:18, background:"#e4e4e4", margin:"0 4px" }} />
-        <span style={{ fontSize:10, color:"#a1a1aa", fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>Status:</span>
-        {["All", ...SL].map(s => (
-          <button key={s} className="btn-sm"
-            style={fSt === s ? { background:"#111", color:"#fff", borderColor:"#111" } : {}}
-            onClick={() => setFSt(s)}>{s}</button>
+        <div style={{width:1,height:16,background:"#e4e4e4",margin:"0 3px"}}/>
+        <span style={{fontSize:10,color:"#a1a1aa",fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Status:</span>
+        {["All",...SL].map(s=>(
+          <button key={s} className="btn-sm" style={fSt===s?{background:"#111",color:"#fff",borderColor:"#111"}:{}} onClick={()=>setFSt(s)}>{s}</button>
         ))}
       </div>
 
-      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
-        {SL.map(s => {
-          const ct = projects.filter(p => p.status === s).length;
-          return ct > 0 ? <Tag key={s} bg={SS[s].bg} c={SS[s].c}>{s} · {ct}</Tag> : null;
-        })}
-        <span style={{ fontSize:11, color:"#a1a1aa", marginLeft:"auto" }}>{filtered.length} shown</span>
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        {SL.map(s=>{const ct=projects.filter(p=>p.status===s).length;return ct>0?<Tag key={s} bg={SS[s].bg} c={SS[s].c}>{s} · {ct}</Tag>:null;})}
+        <span style={{fontSize:11,color:"#a1a1aa",marginLeft:"auto"}}>{filtered.length} shown</span>
       </div>
 
-      {filtered.length === 0
-        ? <div className="card" style={{ textAlign:"center", color:"#d4d4d8", padding:44 }}>No projects match this filter.</div>
-        : filtered.map(p => {
-          const days  = p.deadline ? Math.ceil((new Date(p.deadline) - new Date()) / 86400000) : null;
-          const over  = days !== null && days < 0;
-          const warn  = days !== null && days <= 2 && !over;
-          const isDone = p.status === "Done" || p.status === "Delivered";
-          const earn  = calcProjectEarning(p);
-          const borderColor = p.priority === "Urgent" ? "#ef4444" : p.priority === "High" ? "#f97316" : isDone ? "#10b981" : "#e8e8e8";
+      {/* Project cards */}
+      {filtered.length===0
+        ? <div className="card" style={{textAlign:"center",color:"#d4d4d8",padding:44}}>No projects match this filter.</div>
+        : filtered.map((p,idx) => {
+          const days   = p.deadline ? Math.ceil((new Date(p.deadline)-new Date())/86400000) : null;
+          const over   = days!==null && days<0;
+          const warn   = days!==null && days<=2 && !over;
+          const isDone = p.status==="Done"||p.status==="Delivered";
+          const earn   = calcProjectEarning(p);
+          const borderColor = p.priority==="Urgent"?"#ef4444":p.priority==="High"?"#f97316":isDone?"#d4d4d8":"#e8e8e8";
+
+          // Show "Done" divider before first done project
+          const prevIsDone = idx>0 && (filtered[idx-1].status==="Done"||filtered[idx-1].status==="Delivered");
+          const showDivider = isDone && !prevIsDone && activeCt>0;
 
           return (
-            <div key={p.id} className="card" style={{ marginBottom:10, borderLeft:`4px solid ${borderColor}`, opacity: isDone ? 0.55 : 1, transition:"opacity .2s" }}>
-              {/* Priority banner */}
-              {!isDone && p.priority === "Urgent" && (
-                <div style={{ display:"inline-block", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:800, color:"#ef4444", letterSpacing:.5 }}>
-                  ● URGENT
+            <div key={p.id}>
+              {showDivider && (
+                <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0 10px"}}>
+                  <div style={{flex:1,height:1,background:"#e4e4e4"}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"#a1a1aa",whiteSpace:"nowrap"}}>✓ Completed</span>
+                  <div style={{flex:1,height:1,background:"#e4e4e4"}}/>
                 </div>
               )}
-              {!isDone && p.priority === "High" && (
-                <div style={{ display:"inline-block", background:"#fff7ed", border:"1px solid #fed7aa", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:800, color:"#ea580c", letterSpacing:.5 }}>
-                  ● HIGH
-                </div>
-              )}
-              {!isDone && p.priority === "Normal" && (
-                <div style={{ display:"inline-block", background:"#f9fafb", border:"1px solid #e4e4e4", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:600, color:"#71717a", letterSpacing:.5 }}>
-                  NORMAL
-                </div>
-              )}
-              {!isDone && p.priority === "Low" && (
-                <div style={{ display:"inline-block", background:"#fefce8", border:"1px solid #fde68a", borderRadius:5, padding:"3px 8px", marginBottom:8, fontSize:10, fontWeight:700, color:"#ca8a04", letterSpacing:.5 }}>
-                  ● LOW
-                </div>
-              )}
-              <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:7 }}>
-                    <span style={{ fontWeight:800, fontSize:14, textDecoration: isDone?"line-through":"none", color: isDone?"#a1a1aa":"#111" }}>{p.title}</span>
-                    <Tag bg={SS[p.status]?.bg || "#f3f4f6"} c={SS[p.status]?.c || "#666"}>{p.status}</Tag>
-                    <Tag bg={PS[p.priority]?.bg || "#f9fafb"} c={PS[p.priority]?.c || "#aaa"}>{p.priority}</Tag>
-                    {isDone && <Tag bg="#f0fdf4" c="#16a34a">✓ In Earnings</Tag>}
+              <div className="card" style={{ marginBottom:8, borderLeft:`3px solid ${borderColor}`, opacity:isDone?0.5:1, transition:"opacity .2s" }}>
+                {/* Priority badge */}
+                {!isDone && (
+                  <div style={{marginBottom:6}}>
+                    {p.priority==="Urgent" && <span style={{display:"inline-block",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:800,color:"#ef4444",letterSpacing:.5}}>● URGENT</span>}
+                    {p.priority==="High"   && <span style={{display:"inline-block",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:800,color:"#ea580c",letterSpacing:.5}}>● HIGH</span>}
+                    {p.priority==="Normal" && <span style={{display:"inline-block",background:"#f9fafb",border:"1px solid #e8e8e8",borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:600,color:"#a1a1aa"}}>NORMAL</span>}
+                    {p.priority==="Low"    && <span style={{display:"inline-block",background:"#fefce8",border:"1px solid #fde68a",borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:700,color:"#ca8a04"}}>● LOW</span>}
                   </div>
-                  <div style={{ display:"flex", gap:12, fontSize:12, color:"#71717a", flexWrap:"wrap", alignItems:"center" }}>
-                    <span>👤 <strong style={{ color:"#444" }}>{p.client}</strong></span>
-                    {earn > 0 && (p.rate || parseFloat(p.money)>0) && <span style={{ fontWeight:800, color:"#111" }}>💵 ${earn.toFixed(2)}</span>}
-                    {p.rateType && p.rate && (
-                      <span style={{ color:"#a1a1aa" }}>
-                        {p.rateType === "per_min" ? `$${p.rate}/min · ${p.videoMins || "?"}min × ${p.qty || 1}` : `$${p.rate}/vid × ${p.qty || 1}`}
-                      </span>
+                )}
+
+                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    {/* Title + status */}
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
+                      <span style={{fontWeight:800,fontSize:13.5,textDecoration:isDone?"line-through":"none",color:isDone?"#a1a1aa":"#111"}}>{p.title}</span>
+                      <Tag bg={SS[p.status]?.bg||"#f3f4f6"} c={SS[p.status]?.c||"#666"}>{p.status}</Tag>
+                      {isDone && <Tag bg="#f0fdf4" c="#16a34a">✓ Earned</Tag>}
+                    </div>
+                    {/* Meta row */}
+                    <div style={{display:"flex",gap:10,fontSize:11.5,color:"#71717a",flexWrap:"wrap",alignItems:"center"}}>
+                      <span>👤 <strong style={{color:"#444"}}>{p.client}</strong></span>
+                      {earn>0 && (p.rate||parseFloat(p.money)>0) && <span style={{fontWeight:800,color:"#111"}}>💵 ${earn.toFixed(0)}</span>}
+                      {p.deadline && !isDone && (
+                        <span style={{color:over?"#ef4444":warn?"#f59e0b":"#a1a1aa",fontWeight:over||warn?700:400}}>
+                          📅 {over?`${Math.abs(days)}d overdue ⚠`:`${days}d left`}
+                        </span>
+                      )}
+                      {p.completedDate && <span style={{color:"#10b981",fontWeight:600}}>✓ {p.completedDate}</span>}
+                    </div>
+                    {/* Links row */}
+                    {(p.rawLink||p.doneLink||p.scriptLink||p.assetsLink) && (
+                      <div style={{display:"flex",gap:10,marginTop:5,flexWrap:"wrap"}}>
+                        {p.rawLink    && <a href={p.rawLink}    target="_blank" rel="noreferrer" style={{color:"#3b82f6",fontWeight:700,fontSize:11}}>📁 Raw</a>}
+                        {p.doneLink   && <a href={p.doneLink}   target="_blank" rel="noreferrer" style={{color:"#16a34a",fontWeight:700,fontSize:11}}>✅ Done</a>}
+                        {p.scriptLink && <a href={p.scriptLink} target="_blank" rel="noreferrer" style={{color:"#8b5cf6",fontWeight:700,fontSize:11}}>📝 Script</a>}
+                        {p.assetsLink && <a href={p.assetsLink} target="_blank" rel="noreferrer" style={{color:"#f59e0b",fontWeight:700,fontSize:11}}>📦 Assets</a>}
+                      </div>
                     )}
-                    {p.completedDate && <span style={{ color:"#10b981", fontWeight:600 }}>✓ {p.completedDate}</span>}
-                    {p.deadline && !isDone && (
-                      <span style={{ color: over ? "#ef4444" : warn ? "#f59e0b" : "#a1a1aa", fontWeight: over || warn ? 700 : 400 }}>
-                        📅 {over ? `${Math.abs(days)}d overdue ⚠` : `${days}d left`}
-                      </span>
-                    )}
-                    {p.rawLink    && <a href={p.rawLink}    target="_blank" rel="noreferrer" style={{ color:"#3b82f6", fontWeight:600 }}>📁 Raw</a>}
-                    {p.doneLink   && <a href={p.doneLink}   target="_blank" rel="noreferrer" style={{ color:"#16a34a", fontWeight:600 }}>✅ Done</a>}
-                    {p.scriptLink && <a href={p.scriptLink} target="_blank" rel="noreferrer" style={{ color:"#8b5cf6", fontWeight:600 }}>📝 Script</a>}
-                    {p.assetsLink && <a href={p.assetsLink} target="_blank" rel="noreferrer" style={{ color:"#f59e0b", fontWeight:600 }}>📦 Assets</a>}
                   </div>
-                </div>
-                <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-                  <button className="btn-ghost" style={{ fontSize:12, padding:"7px 14px", fontWeight:700 }}
-                    onClick={() => { setForm({ ...BLANK, ...p }); setEditing(p.id); setTimeout(() => topRef.current?.scrollIntoView({ behavior:"smooth" }), 50); }}>
-                    ✏ Edit
-                  </button>
-                  <button className="btn-danger" style={{ fontSize:12, padding:"7px 12px" }}
-                    onClick={() => saveProjects(projects.filter(x => x.id !== p.id))}>
-                    🗑
-                  </button>
+                  {/* Actions */}
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button className="btn-ghost" style={{fontSize:11,padding:"6px 12px",fontWeight:700}}
+                      onClick={()=>{setForm({...BLANK,...p});setEditing(p.id);setTimeout(()=>formRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50);}}>
+                      ✏ Edit
+                    </button>
+                    <button className="btn-danger" style={{fontSize:11,padding:"6px 10px"}}
+                      onClick={()=>saveProjects(projects.filter(x=>x.id!==p.id))}>
+                      🗑
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           );
         })
       }
+    </div>
+  );
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 340px", gap:20, alignItems:"start" }}
+      className="proj-grid-wrap">
+      {projectList}
+      {formPanel}
     </div>
   );
 }
