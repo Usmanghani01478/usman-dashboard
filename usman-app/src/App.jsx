@@ -351,10 +351,10 @@ function calcTodayPoints(dateKey) {
     if (y.date === dateKey) pts.yt = Object.values(y.data || {}).every(Boolean) ? 5 : 0;
   } catch {}
   try {
-    const mu = JSON.parse(localStorage.getItem("uc_muslim") || "{}");
-    if (mu.date === dateKey) {
-      const ids = ["fajr","dhuhr","asr","maghrib","isha"];
-      pts.namaz = ids.every(id => mu.prayers?.[id]) ? 1 : 0;
+    const r = JSON.parse(localStorage.getItem("uc_routine") || "{}");
+    if (r.date === dateKey) {
+      const NAMAZ_IDX = [0,3,6,8,10];
+      pts.namaz = NAMAZ_IDX.every(i => r.data?.[i]) ? 1 : 0;
     }
   } catch {}
   return pts;
@@ -566,6 +566,13 @@ function Dashboard({ projects, syncStatus, onSync }) {
   const [now, setNow] = useState(new Date());
   const [showAllClocks, setShowAllClocks] = useState(false);
   const [showEarnings, setShowEarnings]   = useState(false);
+  const [routineTick,  setRoutineTick]    = useState(0);
+
+  useEffect(() => {
+    const handler = () => setRoutineTick(n=>n+1);
+    window.addEventListener("routine-update", handler);
+    return () => window.removeEventListener("routine-update", handler);
+  }, []);
   const [popup, setPopup]   = useState(null); // which platform popup is open
   const [socialKey, setSocialKey] = useState(todayKey());
 
@@ -742,85 +749,85 @@ function Dashboard({ projects, syncStatus, onSync }) {
         </div>
       </div>
 
-      {/* Social Post Checklist + YT Automation side by side */}
+      {/* Social + YT Side by Side */}
       <div className="g2" style={{ marginBottom:16 }}>
         {/* Social */}
         <div className="card">
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ fontSize:14, fontWeight:700 }}>Daily Post Checklist</div>
+            <div style={{ fontSize:14, fontWeight:800 }}>Daily Post Checklist</div>
             <div style={{ fontSize:12, fontWeight:800, color: socialDone===4?"#16a34a":"#a1a1aa" }}>
               {socialDone}/4 {socialDone===4?"✅":""}
             </div>
           </div>
           {socialDone===4 && (
-            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", marginBottom:10, fontSize:12, fontWeight:700, color:"#16a34a" }}>
-              🎉 +1 Consistency Point Earned Today!
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"7px 10px", marginBottom:8, fontSize:11, fontWeight:700, color:"#16a34a" }}>
+              🎉 +4 Points Earned!
             </div>
           )}
-          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {SOCIAL_ITEMS.map(platform => {
               const checked = social[platform];
               return (
                 <button key={platform} onClick={() => setPopup(platform)} style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
+                  display:"flex", alignItems:"center", gap:9, padding:"9px 12px",
                   background: checked?"#111":"#fafafa", color: checked?"#fff":"#555",
                   border:`1.5px solid ${checked?"#111":"#e8e8e8"}`,
                   borderRadius:9, fontSize:13, fontWeight:600, textAlign:"left", width:"100%",
                 }}>
-                  <span style={{ width:17, height:17, borderRadius:5, background:checked?"#fff":"#e4e4e4",
-                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:"#111", flexShrink:0, fontWeight:900 }}>
+                  <span style={{ width:16, height:16, borderRadius:4, background:checked?"#fff":"#e4e4e4",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, color:"#111", flexShrink:0, fontWeight:900 }}>
                     {checked?"✓":""}
                   </span>
                   {platform}
-                  {checked && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>posted ✓</span>}
+                  {checked && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>✓</span>}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* YouTube Automation */}
+        {/* YouTube Short Daily */}
         <div className="card">
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ fontSize:14, fontWeight:700 }}>🎬 YouTube Auto · Daily Short</div>
+            <div style={{ fontSize:14, fontWeight:800 }}>🎬 YouTube Short Daily</div>
             <div style={{ fontSize:12, fontWeight:800, color: ytDone===5?"#16a34a":"#a1a1aa" }}>{ytDone}/5</div>
           </div>
           {ytDone===5 && (
-            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"8px 12px", marginBottom:10, fontSize:12, fontWeight:700, color:"#16a34a" }}>
-              🚀 Daily Short Done!
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"7px 10px", marginBottom:8, fontSize:11, fontWeight:700, color:"#16a34a" }}>
+              🚀 +5 Points! Short Done!
             </div>
           )}
-          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {Object.keys(ytData).map((step, i) => {
               const done = ytData[step];
               const prevDone = i===0 || Object.values(ytData)[i-1];
-              const canClick = done || prevDone; // can always uncheck, can only check if prev done
+              const canClick = done || prevDone;
               return (
                 <button key={step} onClick={() => canClick && toggleYT(step)} style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
+                  display:"flex", alignItems:"center", gap:9, padding:"9px 12px",
                   background: done?"#111":prevDone?"#fafafa":"#f9f9f9",
                   color: done?"#fff":prevDone?"#555":"#ccc",
                   border:`1.5px solid ${done?"#111":prevDone?"#e8e8e8":"#f0f0f0"}`,
                   borderRadius:9, fontSize:12.5, fontWeight:600, textAlign:"left", width:"100%",
                   cursor: canClick?"pointer":"not-allowed",
                 }}>
-                  <span style={{ width:20, height:20, borderRadius:5,
+                  <span style={{ width:18, height:18, borderRadius:4,
                     background: done?"#fff":"#e4e4e4",
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:10, color:"#111", flexShrink:0, fontWeight:900 }}>
+                    fontSize:9, color:"#111", flexShrink:0, fontWeight:900 }}>
                     {done?"✓":i+1}
                   </span>
                   {step}
-                  {done && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>done</span>}
+                  {done && <span style={{ marginLeft:"auto", fontSize:10, opacity:.4 }}>✓</span>}
                 </button>
               );
             })}
           </div>
-          <div style={{ fontSize:10, color:"#a1a1aa", marginTop:8 }}>Resets every 24 hours automatically</div>
+          <div style={{ fontSize:10, color:"#a1a1aa", marginTop:8 }}>Resets every 24 hours</div>
         </div>
       </div>
 
-      {/* Completed this month */}
+            {/* Completed this month */}
       <div className="card" style={{ marginBottom:16 }}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Completed · {MO[cm]}</div>
         {doneProjsThisMonth.length === 0
@@ -2056,193 +2063,148 @@ function Messages() {
    MUSLIM DAILY
 ───────────────────────────────────────────────── */
 function MuslimDaily() {
+  const ROUTINE = [
+    { time:"4:35",       label:"Fajr",                    icon:"🌙", section:"🌅 Morning",       namaz:true  },
+    { time:"5:00–8:30",  label:"Sleep",                   icon:"😴"                                         },
+    { time:"9:00–1:15",  label:"Editing — Deep Work",     icon:"🎬", section:"☀️ Deep Work",    accent:true },
+    { time:"1:30",       label:"Zuhr",                    icon:"🕌", section:"🕌 Midday",         namaz:true  },
+    { time:"2:00–3:00",  label:"Lunch + Rest",            icon:"🍽️"                                         },
+    { time:"3:00–5:00",  label:"Editing — Revisions",     icon:"✂️", section:"🎬 Light Work"                },
+    { time:"5:05",       label:"Asr",                     icon:"🕌", section:"🌇 Asr + Social",  namaz:true  },
+    { time:"5:30–6:30",  label:"Social (bahar jao)",      icon:"🚶", accent:true                            },
+    { time:"7:00",       label:"Maghrib",                 icon:"🕌", section:"🌆 Evening",        namaz:true  },
+    { time:"7:30–9:00",  label:"Editing — Final touches", icon:"🎬"                                         },
+    { time:"8:20",       label:"Isha",                    icon:"🕌", section:"🌙 Night",          namaz:true  },
+    { time:"9:30–11:00", label:"Gaming / Chill",          icon:"🎮"                                         },
+    { time:"11:30",      label:"Sleep",                   icon:"😴"                                         },
+  ];
+  const NAMAZ_IDX = [0,3,6,8,10];
+
   const todayKey = () => new Date().toISOString().slice(0,10);
 
-  const PRAYERS = [
-    { id:"fajr",    label:"Fajr",    arabic:"الفجر",    time:"Before sunrise",  icon:"🌙" },
-    { id:"dhuhr",   label:"Dhuhr",   arabic:"الظهر",    time:"Midday",          icon:"☀️" },
-    { id:"asr",     label:"Asr",     arabic:"العصر",    time:"Afternoon",       icon:"🌤️" },
-    { id:"maghrib", label:"Maghrib", arabic:"المغرب",   time:"After sunset",    icon:"🌅" },
-    { id:"isha",    label:"Isha",    arabic:"العشاء",   time:"Night",           icon:"🌃" },
-  ];
-
-  const SURAHS = [
-    { id:"fatiha",   label:"Al-Fatiha",    arabic:"الفاتحة",     desc:"7 verses · Opening" },
-    { id:"ikhlas",   label:"Al-Ikhlas",    arabic:"الإخلاص",     desc:"4 verses · Sincerity" },
-    { id:"falaq",    label:"Al-Falaq",     arabic:"الفلق",       desc:"5 verses · Daybreak" },
-    { id:"nas",      label:"An-Nas",       arabic:"الناس",       desc:"6 verses · Mankind" },
-    { id:"ayatul",   label:"Ayatul Kursi", arabic:"آية الكرسي",  desc:"2:255 · The Throne" },
-    { id:"kahf",     label:"Al-Kahf",      arabic:"الكهف",       desc:"Friday recitation" },
-  ];
-
-  const loadData = () => {
+  const loadRoutine = () => {
     try {
-      const raw = localStorage.getItem("uc_muslim");
-      if (!raw) return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 };
-      const d = JSON.parse(raw);
-      if (d.date !== todayKey()) return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 };
-      return d;
-    } catch { return { date: todayKey(), prayers: {}, surahs: {}, tasbih: 0 }; }
+      const r = JSON.parse(localStorage.getItem("uc_routine")||"{}");
+      return r.date === todayKey() ? r.data : {};
+    } catch { return {}; }
   };
 
-  const [data, setData] = useState(() => loadData());
+  const [data, setData] = useState(() => loadRoutine());
   const [now, setNow]   = useState(new Date());
 
   useEffect(() => {
     const t = setInterval(() => {
       setNow(new Date());
-      const today = todayKey();
-      if (data.date !== today) {
-        const fresh = { date: today, prayers: {}, surahs: {}, tasbih: 0 };
-        setData(fresh);
-        localStorage.setItem("uc_muslim", JSON.stringify(fresh));
-      }
+      const fresh = loadRoutine();
+      setData(fresh);
     }, 10000);
     return () => clearInterval(t);
-  }, [data.date]);
+  }, []);
 
-  const saveData = (d) => { setData(d); localStorage.setItem("uc_muslim", JSON.stringify(d)); };
-
-  const togglePrayer = (id) => {
-    const newData = { ...data, prayers: { ...data.prayers, [id]: !data.prayers[id] } };
-    saveData(newData);
-    refreshConsToday();
+  const toggle = (idx) => {
+    const dk = todayKey();
+    const raw = (() => {
+      try { const r=JSON.parse(localStorage.getItem("uc_routine")||"{}"); return r.date===dk?r:{date:dk,data:{}}; }
+      catch { return {date:dk,data:{}}; }
+    })();
+    raw.data[idx] = !raw.data[idx];
+    localStorage.setItem("uc_routine", JSON.stringify(raw));
+    setData({...raw.data});
+    // Update namaz consistency points
+    const namazDone = NAMAZ_IDX.every(i => raw.data[i]);
+    const cons = (() => { try { return JSON.parse(localStorage.getItem("uc_cons")||"{}"); } catch { return {}; } })();
+    const existing = cons[dk] || {};
+    const newEntry = { ...existing, namaz: namazDone?1:0 };
+    newEntry.total = (newEntry.social||0) + (newEntry.yt||0) + (newEntry.namaz||0);
+    if (newEntry.total > 0) cons[dk] = newEntry; else delete cons[dk];
+    localStorage.setItem("uc_cons", JSON.stringify(cons));
     if (window.__cloudPush) window.__cloudPush();
-  };
-  const toggleSurah = (id) => {
-    const newData = { ...data, surahs: { ...data.surahs, [id]: !data.surahs[id] } };
-    saveData(newData);
-  };
-  const addTasbih = (n) => {
-    const newData = { ...data, tasbih: (data.tasbih || 0) + n };
-    saveData(newData);
-  };
-  const resetTasbih = () => {
-    const newData = { ...data, tasbih: 0 };
-    saveData(newData);
+    window.dispatchEvent(new Event("routine-update"));
   };
 
-  const prayersDone = PRAYERS.filter(p => data.prayers[p.id]).length;
-  const surahsDone  = SURAHS.filter(s => data.surahs[s.id]).length;
-  const today = now.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" });
+  const done = ROUTINE.filter((_,i) => data[i]).length;
+  const namazDone = NAMAZ_IDX.filter(i => data[i]).length;
+  const today = now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
 
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom:24 }}>
+      <div style={{ marginBottom:20 }}>
         <div style={{ fontSize:11, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:5 }}>{today}</div>
-        <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Muslim Daily Tracker</div>
-        <div style={{ fontSize:13, color:"#a1a1aa" }}>Resets every 24 hours · Stay consistent with your deen</div>
+        <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Daily Routine</div>
+        <div style={{ fontSize:13, color:"#a1a1aa" }}>Resets every midnight automatically</div>
       </div>
 
-      {/* Progress overview */}
+      {/* Progress */}
       <div className="g2" style={{ marginBottom:16 }}>
-        <div className="card" style={{ borderTop:"3px solid #111", background: prayersDone===5?"#111":"#fff" }}>
-          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color: prayersDone===5?"#444":"#a1a1aa" }}>
-            Daily Prayers
+        <div className="card" style={{ borderTop:`3px solid ${done===13?"#111":"#e4e4e4"}`, background:done===13?"#111":"#fff" }}>
+          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:done===13?"#555":"#a1a1aa" }}>
+            Today's Progress
           </div>
-          <div style={{ fontSize:46, fontWeight:800, lineHeight:1, color: prayersDone===5?"#fff":"#111" }}>
-            {prayersDone}/5
-          </div>
-          <div style={{ fontSize:12, marginTop:7, color: prayersDone===5?"#555":"#a1a1aa" }}>
-            {prayersDone===5 ? "Alhamdulillah ✓ All 5 prayed" : `${5-prayersDone} remaining today`}
+          <div style={{ fontSize:48, fontWeight:800, lineHeight:1, color:done===13?"#fff":"#111" }}>{done}/13</div>
+          <div style={{ fontSize:12, color:done===13?"#aaa":"#a1a1aa", marginTop:6 }}>
+            {done===13?"MashaAllah! Full day ✓":`${13-done} tasks remaining`}
           </div>
         </div>
-        <div className="card" style={{ borderTop:"3px solid #111" }}>
+        <div className="card" style={{ borderTop:`3px solid ${namazDone===5?"#16a34a":"#e4e4e4"}` }}>
           <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:"#a1a1aa" }}>
-            Quran / Surahs
+            Namaz Today
           </div>
-          <div style={{ fontSize:46, fontWeight:800, lineHeight:1 }}>{surahsDone}/{SURAHS.length}</div>
-          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:7 }}>
-            {surahsDone===SURAHS.length ? "MashaAllah! All read ✓" : `${SURAHS.length-surahsDone} remaining`}
-          </div>
-        </div>
-      </div>
-
-      {/* 5 Prayers */}
-      <div className="card" style={{ marginBottom:16 }}>
-        <div style={{ fontWeight:800, fontSize:15, marginBottom:14 }}>5 Daily Prayers — Salah</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {PRAYERS.map(p => {
-            const done = !!data.prayers[p.id];
-            return (
-              <button key={p.id} onClick={() => togglePrayer(p.id)} style={{
-                display:"flex", alignItems:"center", gap:12, padding:"12px 14px",
-                background: done?"#111":"#fafafa", color: done?"#fff":"#333",
-                border:`1.5px solid ${done?"#111":"#e8e8e8"}`,
-                borderRadius:10, textAlign:"left", width:"100%", cursor:"pointer",
-              }}>
-                <span style={{ fontSize:20, flexShrink:0 }}>{p.icon}</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:800, fontSize:14 }}>{p.label}</div>
-                  <div style={{ fontSize:11, marginTop:2, color: done?"#555":"#a1a1aa" }}>
-                    {p.arabic} · {p.time}
-                  </div>
-                </div>
-                <div style={{
-                  width:24, height:24, borderRadius:6, flexShrink:0,
-                  background: done?"#fff":"#e4e4e4",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:13, color:"#111", fontWeight:900,
-                }}>{done?"✓":""}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Daily Surahs */}
-      <div className="card" style={{ marginBottom:16 }}>
-        <div style={{ fontWeight:800, fontSize:15, marginBottom:14 }}>Daily Surahs — Quran</div>
-        <div className="g2">
-          {SURAHS.map(s => {
-            const done = !!data.surahs[s.id];
-            return (
-              <button key={s.id} onClick={() => toggleSurah(s.id)} style={{
-                display:"flex", alignItems:"center", gap:10, padding:"12px 14px",
-                background: done?"#111":"#fafafa", color: done?"#fff":"#333",
-                border:`1.5px solid ${done?"#111":"#e8e8e8"}`,
-                borderRadius:10, textAlign:"left", cursor:"pointer",
-              }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:800, fontSize:13 }}>{s.label}</div>
-                  <div style={{ fontSize:12, fontWeight:700, color: done?"#555":"#a1a1aa", marginTop:1 }}>{s.arabic}</div>
-                  <div style={{ fontSize:10, color: done?"#444":"#a1a1aa", marginTop:2 }}>{s.desc}</div>
-                </div>
-                <div style={{
-                  width:22, height:22, borderRadius:5, flexShrink:0,
-                  background: done?"#fff":"#e4e4e4",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:12, color:"#111", fontWeight:900,
-                }}>{done?"✓":""}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tasbih Counter */}
-      <div className="card">
-        <div style={{ fontWeight:800, fontSize:15, marginBottom:6 }}>Tasbih Counter</div>
-        <div style={{ fontSize:12, color:"#a1a1aa", marginBottom:16 }}>SubhanAllah · Alhamdulillah · Allahu Akbar</div>
-        <div style={{ textAlign:"center", marginBottom:16 }}>
-          <div style={{ fontSize:72, fontWeight:800, color:"#111", lineHeight:1 }}>{data.tasbih || 0}</div>
+          <div style={{ fontSize:48, fontWeight:800, lineHeight:1, color:namazDone===5?"#16a34a":"#111" }}>{namazDone}/5</div>
           <div style={{ fontSize:12, color:"#a1a1aa", marginTop:6 }}>
-            {(data.tasbih || 0) >= 99 ? `${Math.floor((data.tasbih||0)/33)} sets of 33` : `${33 - ((data.tasbih||0)%33)} to next 33`}
+            {namazDone===5?"Alhamdulillah ✓":"Keep going"}
           </div>
         </div>
-        <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
-          {[1,5,10,33].map(n => (
-            <button key={n} onClick={() => addTasbih(n)} style={{
-              padding:"12px 20px", background:"#111", color:"#fff", border:"none",
-              borderRadius:10, fontSize:14, fontWeight:800, cursor:"pointer", minWidth:60
-            }}>+{n}</button>
-          ))}
-          <button onClick={resetTasbih} style={{
-            padding:"12px 16px", background:"#fff1f2", color:"#be123c",
-            border:"1.5px solid #fecdd3", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer"
-          }}>Reset</button>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ height:8, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
+          <div style={{ height:"100%", background:"#111", borderRadius:99, transition:"width .4s", width:`${(done/13)*100}%` }}/>
         </div>
+      </div>
+
+      {/* Routine list */}
+      <div className="card">
+        {ROUTINE.map((item, idx) => {
+          const checked = !!data[idx];
+          return (
+            <div key={idx}>
+              {item.section && (
+                <div style={{ fontSize:10, fontWeight:800, color:"#a1a1aa", letterSpacing:1.5,
+                  textTransform:"uppercase", margin: idx===0?"0 0 8px":"16px 0 8px", paddingLeft:2 }}>
+                  {item.section}
+                </div>
+              )}
+              <button onClick={() => toggle(idx)} style={{
+                display:"flex", alignItems:"center", gap:12, padding:"12px 14px",
+                background: checked?"#111":"#fafafa",
+                color: checked?"#fff":"#333",
+                border:`1.5px solid ${checked?"#111":item.namaz?"#e4e4e4":item.accent?"#ebebeb":"#f0f0f0"}`,
+                borderRadius:10, fontSize:13.5, fontWeight:checked?700:500,
+                textAlign:"left", width:"100%", cursor:"pointer", marginBottom:6,
+                transition:"all .15s",
+              }}>
+                {/* Checkbox */}
+                <span style={{ width:20, height:20, borderRadius:6, flexShrink:0,
+                  background:checked?"#fff":"#e4e4e4",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:11, color:"#111", fontWeight:900 }}>
+                  {checked?"✓":""}
+                </span>
+                {/* Icon */}
+                <span style={{ fontSize:18, flexShrink:0 }}>{item.icon}</span>
+                {/* Label */}
+                <span style={{ flex:1, textDecoration:checked?"line-through":"none", opacity:checked?.7:1 }}>
+                  {item.label}
+                  {item.namaz && !checked && <span style={{ fontSize:10, color:"#a1a1aa", marginLeft:6 }}>namaz</span>}
+                </span>
+                {/* Time */}
+                <span style={{ fontSize:11, opacity:.45, flexShrink:0 }}>{item.time}</span>
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
