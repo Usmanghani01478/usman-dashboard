@@ -422,6 +422,7 @@ export default function App() {
     setSyncStatus("syncing");
     cloudPull({ setProjects, setClients }).then(pulled => {
       setSyncStatus(pulled ? "ok" : "idle");
+      setTimeout(() => setSyncStatus("idle"), 3000);
     });
   }, []);
 
@@ -442,9 +443,7 @@ export default function App() {
     { id:"projects",     icon:"◧", label:"Projects"     },
     { id:"earnings",     icon:"◎", label:"Earnings"     },
     { id:"consistency",  icon:"◈", label:"Consistency" },
-
-    { id:"converter",    icon:"⊛", label:"USD / PKR"    },
-    { id:"muslim",        icon:"☽", label:"Muslim Daily"  },
+    { id:"muslim",        icon:"☽", label:"Editing"      },
     { id:"notes",          icon:"✎", label:"Notes"          },
     { id:"clientinfo",     icon:"◉", label:"Client Info"    },
   ];
@@ -456,8 +455,6 @@ export default function App() {
     projects:    <Projects  projects={projects} saveProjects={saveProjects} clients={clients} saveClients={saveClients} />,
     earnings:    <Earnings  projects={projects} clients={clients} />,
     consistency: <Consistency />,
-
-    converter:   <Converter />,
     muslim:      <MuslimDaily />,
     notes:       <Notes />,
     clientinfo:  <ClientInfo />,
@@ -651,6 +648,7 @@ function Dashboard({ projects, syncStatus, onSync }) {
   const cm = now.getMonth(), cy = now.getFullYear();
   const inProg  = projects.filter(p => p.status === "In Progress").length;
   const urgent  = projects.filter(p => p.priority === "Urgent" && p.status !== "Delivered").length;
+  const pendingPayment = projects.filter(p => (p.status === "Done" || p.status === "Delivered") && !p.paymentReceived).length;
   const doneProjsThisMonth = projects.filter(p => {
     if (p.status !== "Done" && p.status !== "Delivered") return false;
     const d = new Date(p.completedDate || "");
@@ -722,7 +720,8 @@ function Dashboard({ projects, syncStatus, onSync }) {
         {[
           { v:projects.length, l:"Total Projects", s:"all time",      a:"#111"    },
           { v:inProg,          l:"In Progress",    s:"editing now",    a:"#f59e0b" },
-          { v:urgent, l:urgent?"⚠ Urgent":"All Clear ✓", s:urgent?"needs attention":"no urgent tasks", a:urgent?"#ef4444":"#10b981" },
+          { v:urgent, l:urgent?"⚠ URGENT":"All Clear ✓", s:urgent?"needs attention":"no urgent tasks", a:urgent?"#ef4444":"#10b981" },
+          { v:pendingPayment, l:"Pending Payment", s:pendingPayment?"unpaid projects":"all paid", a:pendingPayment?"#f59e0b":"#10b981" },
         ].map(st => (
           <div key={st.l} className="card" style={{ borderTop:`3px solid ${st.a}` }}>
             <div style={{ fontSize:46, fontWeight:800, color:st.a, lineHeight:1 }}>{st.v}</div>
@@ -1177,7 +1176,7 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
   const BLANK = {
     id:"", client:"", title:"", rawLink:"", doneLink:"", scriptLink:"", assetsLink:"",
     status:"Not Started", priority:"Normal", deadline:"", money:"",
-    rateType:"per_video", rate:"", videoMins:"", qty:"1", completedDate:""
+    rateType:"per_video", rate:"", videoMins:"", qty:"1", completedDate:"", paymentReceived:false
   };
   const [form,       setForm]      = useState({ ...BLANK });
   const [editing,    setEditing]   = useState(null);
@@ -1283,6 +1282,15 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
       <div style={{ marginBottom:12 }}>
         <label className="lbl">Deadline</label>
         <input type="date" className="inp" value={form.deadline} onChange={e=>F("deadline",e.target.value)} />
+      </div>
+
+      {/* Payment Received */}
+      <div style={{ marginBottom:12, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"#fff7ed", borderRadius:8, border:"1px solid #fed7aa" }}>
+        <input type="checkbox" checked={form.paymentReceived} onChange={e=>F("paymentReceived",e.target.checked)} 
+          style={{ width:18, height:18, cursor:"pointer" }} />
+        <label style={{ fontSize:13, fontWeight:700, color:"#c2410c", cursor:"pointer", flex:1 }}>
+          ✓ Payment Received
+        </label>
       </div>
 
       {/* Payment */}
@@ -1463,6 +1471,8 @@ function Projects({ projects, saveProjects, clients, saveClients }) {
                     <div style={{display:"flex",gap:10,fontSize:11.5,color:"#71717a",flexWrap:"wrap",alignItems:"center"}}>
                       <span>👤 <strong style={{color:"#444"}}>{p.client}</strong></span>
                       {earn>0 && (p.rate||parseFloat(p.money)>0) && <span style={{fontWeight:800,color:"#111"}}>💵 ${earn.toFixed(0)}</span>}
+                      {isDone && !p.paymentReceived && <span style={{color:"#f59e0b",fontWeight:800,fontSize:11}}>⚠ Payment Pending</span>}
+                      {isDone && p.paymentReceived && <span style={{color:"#16a34a",fontWeight:800,fontSize:11}}>✓ Payment Received</span>}
                       {p.deadline && !isDone && (
                         <span style={{color:over?"#ef4444":warn?"#f59e0b":"#a1a1aa",fontWeight:over||warn?700:400}}>
                           📅 {over?`${Math.abs(days)}d overdue ⚠`:`${days}d left`}
@@ -2063,40 +2073,63 @@ function Messages() {
    MUSLIM DAILY
 ───────────────────────────────────────────────── */
 function MuslimDaily() {
-  const ROUTINE = [
-    { time:"4:35",       label:"Fajr",                    icon:"🌙", section:"🌅 Morning",       namaz:true  },
-    { time:"5:00–8:30",  label:"Sleep",                   icon:"😴"                                         },
-    { time:"9:00–1:15",  label:"Editing — Deep Work",     icon:"🎬", section:"☀️ Deep Work",    accent:true },
-    { time:"1:30",       label:"Zuhr",                    icon:"🕌", section:"🕌 Midday",         namaz:true  },
-    { time:"2:00–3:00",  label:"Lunch + Rest",            icon:"🍽️"                                         },
-    { time:"3:00–5:00",  label:"Editing — Revisions",     icon:"✂️", section:"🎬 Light Work"                },
-    { time:"5:05",       label:"Asr",                     icon:"🕌", section:"🌇 Asr + Social",  namaz:true  },
-    { time:"5:30–6:30",  label:"Social (bahar jao)",      icon:"🚶", accent:true                            },
-    { time:"7:00",       label:"Maghrib",                 icon:"🕌", section:"🌆 Evening",        namaz:true  },
-    { time:"7:30–9:00",  label:"Editing — Final touches", icon:"🎬"                                         },
-    { time:"8:20",       label:"Isha",                    icon:"🕌", section:"🌙 Night",          namaz:true  },
-    { time:"9:30–11:00", label:"Gaming / Chill",          icon:"🎮"                                         },
-    { time:"11:30",      label:"Sleep",                   icon:"😴"                                         },
+  const DAILY_SCHEDULE = [
+    // 4:30 AM - Fajr
+    { time:"4:30 AM",      task:"Fajr Prayer",                 icon:"🕌", category:"Namaz", namaz:"Fajr" },
+    
+    // Sleep after Fajr
+    { time:"5:00 AM",      task:"Sleep",                       icon:"😴", category:"Rest" },
+    
+    // Wake 8-8:30 AM
+    { time:"8:00 AM",      task:"Wake Up + Breakfast",         icon:"🍳", category:"Personal" },
+    { time:"8:30 AM",      task:"Breakfast + Rest",            icon:"☕", category:"Personal" },
+    
+    // Editing 9 AM - 1 PM
+    { time:"9:00 AM",      task:"Editing",                     icon:"🎬", category:"Editing", major:true },
+    { time:"12:00 PM",     task:"Zuhr Prayer",                 icon:"🕌", category:"Namaz", namaz:"Zuhr" },
+    { time:"12:30 PM",     task:"Lunch + Break",               icon:"🍽️", category:"Personal" },
+    { time:"1:00 PM",      task:"End of Morning Editing",      icon:"✓", category:"Editing" },
+    
+    // Break 1-3 PM (Asr time is 2-3 PM area)
+    { time:"2:00 PM",      task:"Asr Prayer",                  icon:"🕌", category:"Namaz", namaz:"Asr" },
+    { time:"2:30 PM",      task:"Break / Rest / Tea",          icon:"🍵", category:"Rest" },
+    
+    // Editing 3 PM - Asr Prayer
+    { time:"3:00 PM",      task:"Editing Again",               icon:"🎬", category:"Editing", major:true },
+    { time:"4:30 PM",      task:"Asr Prayer Time Ends",        icon:"🕌", category:"Namaz" },
+    { time:"5:00 PM",      task:"Continue Till Asr Prayer",    icon:"🎬", category:"Editing" },
+    
+    // Maghrib Evening
+    { time:"6:30 PM",      task:"Maghrib Prayer (Sunset)",     icon:"🕌", category:"Namaz", namaz:"Maghrib" },
+    { time:"7:00 PM",      task:"Dinner",                      icon:"🍴", category:"Personal" },
+    
+    // Gaming 7 PM - Isha (NO EDITING)
+    { time:"7:30 PM",      task:"Gaming / Entertainment",      icon:"🎮", category:"Chill", major:true },
+    { time:"8:30 PM",      task:"Gaming / Chill",              icon:"🎮", category:"Chill" },
+    
+    // Isha Prayer
+    { time:"8:20 PM",      task:"Isha Prayer",                 icon:"🕌", category:"Namaz", namaz:"Isha" },
+    { time:"9:00 PM",      task:"After Isha - Chill",          icon:"🎮", category:"Chill" },
+    { time:"11:00 PM",     task:"Wind Down / Sleep Prep",      icon:"🛏️", category:"Rest" },
+    { time:"11:30 PM",     task:"Ready for Next Day",          icon:"😴", category:"Rest" },
   ];
-  const NAMAZ_IDX = [0,3,6,8,10];
 
   const todayKey = () => new Date().toISOString().slice(0,10);
 
-  const loadRoutine = () => {
+  const loadData = () => {
     try {
-      const r = JSON.parse(localStorage.getItem("uc_routine")||"{}");
+      const r = JSON.parse(localStorage.getItem("uc_editing")||"{}");
       return r.date === todayKey() ? r.data : {};
     } catch { return {}; }
   };
 
-  const [data, setData] = useState(() => loadRoutine());
+  const [data, setData] = useState(() => loadData());
   const [now, setNow]   = useState(new Date());
 
   useEffect(() => {
     const t = setInterval(() => {
       setNow(new Date());
-      const fresh = loadRoutine();
-      setData(fresh);
+      setData(loadData());
     }, 10000);
     return () => clearInterval(t);
   }, []);
@@ -2104,107 +2137,106 @@ function MuslimDaily() {
   const toggle = (idx) => {
     const dk = todayKey();
     const raw = (() => {
-      try { const r=JSON.parse(localStorage.getItem("uc_routine")||"{}"); return r.date===dk?r:{date:dk,data:{}}; }
+      try { const r=JSON.parse(localStorage.getItem("uc_editing")||"{}"); return r.date===dk?r:{date:dk,data:{}}; }
       catch { return {date:dk,data:{}}; }
     })();
     raw.data[idx] = !raw.data[idx];
-    localStorage.setItem("uc_routine", JSON.stringify(raw));
+    localStorage.setItem("uc_editing", JSON.stringify(raw));
     setData({...raw.data});
-    // Update namaz consistency points
-    const namazDone = NAMAZ_IDX.every(i => raw.data[i]);
-    const cons = (() => { try { return JSON.parse(localStorage.getItem("uc_cons")||"{}"); } catch { return {}; } })();
-    const existing = cons[dk] || {};
-    const newEntry = { ...existing, namaz: namazDone?1:0 };
-    newEntry.total = (newEntry.social||0) + (newEntry.yt||0) + (newEntry.namaz||0);
-    if (newEntry.total > 0) cons[dk] = newEntry; else delete cons[dk];
-    localStorage.setItem("uc_cons", JSON.stringify(cons));
     if (window.__cloudPush) window.__cloudPush();
-    window.dispatchEvent(new Event("routine-update"));
   };
 
-  const done = ROUTINE.filter((_,i) => data[i]).length;
-  const namazDone = NAMAZ_IDX.filter(i => data[i]).length;
+  const categories = {
+    Namaz: { color:"#8b5cf6", bg:"#f3e8ff" },
+    Editing: { color:"#111", bg:"#f9f9f9" },
+    Chill: { color:"#ec4899", bg:"#fce7f3" },
+    Personal: { color:"#0ea5e9", bg:"#f0f9ff" },
+    Rest: { color:"#6b7280", bg:"#f3f4f6" },
+  };
+
+  const done = Object.values(data).filter(Boolean).length;
   const today = now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  const namazDone = DAILY_SCHEDULE.filter((item, idx) => item.namaz && data[idx]).length;
 
   return (
     <div>
       {/* Header */}
       <div style={{ marginBottom:20 }}>
         <div style={{ fontSize:11, color:"#a1a1aa", letterSpacing:1.5, textTransform:"uppercase", marginBottom:5 }}>{today}</div>
-        <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Daily Routine</div>
-        <div style={{ fontSize:13, color:"#a1a1aa" }}>Resets every midnight automatically</div>
+        <div style={{ fontSize:26, fontWeight:800, letterSpacing:-0.5, color:"#111", marginBottom:4 }}>Daily Schedule</div>
+        <div style={{ fontSize:13, color:"#a1a1aa" }}>4:30 AM Fajr → Sleep → 8 AM Breakfast → Edit 9-1 PM → Edit 3-Asr → Gaming 7 PM-Isha</div>
       </div>
 
       {/* Progress */}
       <div className="g2" style={{ marginBottom:16 }}>
-        <div className="card" style={{ borderTop:`3px solid ${done===13?"#111":"#e4e4e4"}`, background:done===13?"#111":"#fff" }}>
-          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:done===13?"#555":"#a1a1aa" }}>
-            Today's Progress
+        <div className="card" style={{ borderTop:"3px solid #111", background:done===DAILY_SCHEDULE.length?"#111":"#fff" }}>
+          <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:done===DAILY_SCHEDULE.length?"#555":"#a1a1aa" }}>
+            Progress
           </div>
-          <div style={{ fontSize:48, fontWeight:800, lineHeight:1, color:done===13?"#fff":"#111" }}>{done}/13</div>
-          <div style={{ fontSize:12, color:done===13?"#aaa":"#a1a1aa", marginTop:6 }}>
-            {done===13?"MashaAllah! Full day ✓":`${13-done} tasks remaining`}
+          <div style={{ fontSize:42, fontWeight:800, lineHeight:1, color:done===DAILY_SCHEDULE.length?"#fff":"#111" }}>
+            {done}/{DAILY_SCHEDULE.length}
           </div>
         </div>
-        <div className="card" style={{ borderTop:`3px solid ${namazDone===5?"#16a34a":"#e4e4e4"}` }}>
+        <div className="card" style={{ borderTop:"3px solid #8b5cf6" }}>
           <div style={{ fontSize:10, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:6, color:"#a1a1aa" }}>
-            Namaz Today
+            Prayers
           </div>
-          <div style={{ fontSize:48, fontWeight:800, lineHeight:1, color:namazDone===5?"#16a34a":"#111" }}>{namazDone}/5</div>
-          <div style={{ fontSize:12, color:"#a1a1aa", marginTop:6 }}>
-            {namazDone===5?"Alhamdulillah ✓":"Keep going"}
+          <div style={{ fontSize:42, fontWeight:800, lineHeight:1, color:"#8b5cf6" }}>
+            {namazDone}/5
           </div>
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div style={{ marginBottom:20 }}>
+      {/* Bar */}
+      <div style={{ marginBottom:16 }}>
         <div style={{ height:8, background:"#f4f4f5", borderRadius:99, overflow:"hidden" }}>
-          <div style={{ height:"100%", background:"#111", borderRadius:99, transition:"width .4s", width:`${(done/13)*100}%` }}/>
+          <div style={{ height:"100%", background:"#111", borderRadius:99, transition:"width .3s", width:`${(done/DAILY_SCHEDULE.length)*100}%` }}/>
         </div>
       </div>
 
-      {/* Routine list */}
+      {/* Schedule */}
       <div className="card">
-        {ROUTINE.map((item, idx) => {
-          const checked = !!data[idx];
-          return (
-            <div key={idx}>
-              {item.section && (
-                <div style={{ fontSize:10, fontWeight:800, color:"#a1a1aa", letterSpacing:1.5,
-                  textTransform:"uppercase", margin: idx===0?"0 0 8px":"16px 0 8px", paddingLeft:2 }}>
-                  {item.section}
-                </div>
-              )}
-              <button onClick={() => toggle(idx)} style={{
-                display:"flex", alignItems:"center", gap:12, padding:"12px 14px",
-                background: checked?"#111":"#fafafa",
-                color: checked?"#fff":"#333",
-                border:`1.5px solid ${checked?"#111":item.namaz?"#e4e4e4":item.accent?"#ebebeb":"#f0f0f0"}`,
-                borderRadius:10, fontSize:13.5, fontWeight:checked?700:500,
-                textAlign:"left", width:"100%", cursor:"pointer", marginBottom:6,
+        <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>📅 Schedule</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+          {DAILY_SCHEDULE.map((item, idx) => {
+            const checked = !!data[idx];
+            const cat = categories[item.category];
+            return (
+              <button key={idx} onClick={() => toggle(idx)} style={{
+                display:"flex", alignItems:"center", gap:11, padding:"11px 13px",
+                background: checked?"#111":cat.bg,
+                color: checked?"#fff":cat.color,
+                border:`1.5px solid ${checked?"#111":cat.color}`,
+                borderRadius:9, fontSize:12.5, fontWeight:checked?700:600,
+                textAlign:"left", width:"100%", cursor:"pointer",
                 transition:"all .15s",
               }}>
-                {/* Checkbox */}
-                <span style={{ width:20, height:20, borderRadius:6, flexShrink:0,
-                  background:checked?"#fff":"#e4e4e4",
+                <span style={{ width:19, height:19, borderRadius:4, flexShrink:0,
+                  background:checked?"#fff":"#f0f0f0",
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:11, color:"#111", fontWeight:900 }}>
+                  fontSize:10, color:"#111", fontWeight:900 }}>
                   {checked?"✓":""}
                 </span>
-                {/* Icon */}
                 <span style={{ fontSize:18, flexShrink:0 }}>{item.icon}</span>
-                {/* Label */}
-                <span style={{ flex:1, textDecoration:checked?"line-through":"none", opacity:checked?.7:1 }}>
-                  {item.label}
-                  {item.namaz && !checked && <span style={{ fontSize:10, color:"#a1a1aa", marginLeft:6 }}>namaz</span>}
-                </span>
-                {/* Time */}
-                <span style={{ fontSize:11, opacity:.45, flexShrink:0 }}>{item.time}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:12.5, textDecoration:checked?"line-through":"none", opacity:checked?.5:1 }}>
+                    {item.task}
+                  </div>
+                  {item.namaz && (
+                    <div style={{ fontSize:10, color:cat.color, opacity:.7, marginTop:1 }}>
+                      {item.namaz} Prayer
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize:11, opacity:checked?.4:.6, flexShrink:0, fontWeight:600, whiteSpace:"nowrap" }}>{item.time}</span>
               </button>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid #f0f0f0", fontSize:10, color:"#a1a1aa", fontWeight:700, textAlign:"center", lineHeight:1.6 }}>
+          <div>🕌 5 Prayers: Fajr (4:30 AM) · Zuhr (12 PM) · Asr (4:30 PM) · Maghrib (6:30 PM) · Isha (8:20 PM)</div>
+        </div>
       </div>
     </div>
   );
