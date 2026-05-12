@@ -273,36 +273,60 @@ function getAllData() {
     yt:      load("uc_yt_auto", {}),
     cons:    load("uc_cons",    {}),
     muslim:  load("uc_muslim",  {}),
+    notes:   load("uc_notes",   []),
+    clients_info: load("uc_cinfo", []),
     ts:      Date.now(),
   };
 }
 
 function applyAllData(data, setters) {
   if (!data) return;
+  console.log("Applying cloud data...", data);
   const { setProjects, setClients } = setters;
-  if (data.proj)    { save("uc_proj",    data.proj);    setProjects(data.proj); }
-  if (data.clients) { save("uc_clients", data.clients); setClients(data.clients); }
-  if (data.earn)    save("uc_earn",    data.earn);
-  if (data.social)  save("uc_social",  data.social);
-  if (data.yt)      save("uc_yt_auto", data.yt);
-  if (data.cons)    save("uc_cons",    data.cons);
-  if (data.muslim)  save("uc_muslim",  data.muslim);
+  
+  if (data.proj && Array.isArray(data.proj)) { 
+    save("uc_proj", data.proj);    
+    setProjects(data.proj);
+    console.log("Applied projects:", data.proj.length);
+  }
+  if (data.clients && Array.isArray(data.clients)) { 
+    save("uc_clients", data.clients); 
+    setClients(data.clients);
+    console.log("Applied clients:", data.clients.length);
+  }
+  if (data.earn) save("uc_earn", data.earn);
+  if (data.social) save("uc_social", data.social);
+  if (data.yt) save("uc_yt_auto", data.yt);
+  if (data.cons) save("uc_cons", data.cons);
+  if (data.muslim) save("uc_muslim", data.muslim);
+  if (data.notes) save("uc_notes", data.notes);
+  if (data.clients_info) save("uc_cinfo", data.clients_info);
 }
 
 async function cloudPush(setSyncStatus) {
   try {
     if (setSyncStatus) setSyncStatus("syncing");
+    const data = getAllData();
+    console.log("Pushing to cloud:", data);
     const r = await fetch(`${JBIN_URL}/${JBIN_BIN}`, {
       method: "PUT",
       headers: { "Content-Type":"application/json", "X-ACCESS-KEY": JBIN_KEY },
-      body: JSON.stringify(getAllData()),
+      body: JSON.stringify(data),
     });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.message || "push failed");
+    if (!r.ok) {
+      console.error("Push error:", j.message);
+      if (setSyncStatus) setSyncStatus("err");
+      return;
+    }
+    console.log("✅ Pushed successfully");
     save("uc_ts", Date.now());
-    if (setSyncStatus) setSyncStatus("ok");
+    if (setSyncStatus) {
+      setSyncStatus("ok");
+      setTimeout(() => setSyncStatus("idle"), 2000);
+    }
   } catch(e) {
-    console.error("cloudPush:", e.message);
+    console.error("cloudPush error:", e.message);
     if (setSyncStatus) setSyncStatus("err");
   }
 }
@@ -312,19 +336,27 @@ async function cloudPull(setters) {
     const r = await fetch(`${JBIN_URL}/${JBIN_BIN}/latest`, {
       headers: { "X-ACCESS-KEY": JBIN_KEY },
     });
-    if (!r.ok) return false;
+    if (!r.ok) {
+      console.log("Pull failed - status:", r.status);
+      return false;
+    }
     const j = await r.json();
     const data = j.record;
-    if (!data || !data.ts) return false;
+    if (!data || !data.ts) {
+      console.log("No data in cloud");
+      return false;
+    }
     const localTs = load("uc_ts", 0);
+    console.log("Cloud ts:", data.ts, "Local ts:", localTs);
     if (data.ts > localTs) {
+      console.log("Pulling cloud data...");
       applyAllData(data, setters);
       save("uc_ts", data.ts);
       return true;
     }
     return false;
   } catch(e) {
-    console.error("cloudPull:", e.message);
+    console.error("cloudPull error:", e.message);
     return false;
   }
 }
@@ -426,10 +458,13 @@ export default function App() {
     });
   }, []);
 
-  // Debounced push — waits 2s after last change then pushes
+  // Debounced push — waits 1s after last change then pushes
   const schedulePush = () => {
     if (pushTimer.current) clearTimeout(pushTimer.current);
-    pushTimer.current = setTimeout(() => cloudPush(setSyncStatus), 2000);
+    pushTimer.current = setTimeout(() => {
+      console.log("Scheduled push executing...");
+      cloudPush(setSyncStatus);
+    }, 1000);
   };
 
   // Expose globally so Dashboard/MuslimDaily can trigger push on social/yt/namaz changes
